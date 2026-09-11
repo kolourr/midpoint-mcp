@@ -30,37 +30,61 @@ Coverage: Pokémon, Magic: The Gathering, Yu-Gi-Oh!, One Piece, Disney Lorcana, 
 Ball, Digimon; baseball, basketball, football, hockey, soccer, wrestling, UFC, racing, tennis, golf, boxing;
 Marvel, Star Wars, Garbage Pail Kids and other entertainment and TCG sets.
 
+## Installation
+
+Remote server, nothing to install. Add it to any MCP client that supports HTTP servers:
+
+```json
+{
+  "mcpServers": {
+    "midpoint": {
+      "url": "https://mcp.cardcenteringtool.com/mcp"
+    }
+  }
+}
+```
+
+Clients that only speak stdio (Claude Desktop, some IDE plugins) can bridge with `mcp-remote`:
+
+```json
+{
+  "mcpServers": {
+    "midpoint": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://mcp.cardcenteringtool.com/mcp"]
+    }
+  }
+}
+```
+
+- **ChatGPT:** install *Midpoint Card Prices* from the plugin directory, or in Developer Mode add a
+  connector with the endpoint.
+- **Claude (web, desktop, mobile):** Customize → Connectors → Add custom connector → paste the endpoint.
+- **Claude Code:** `claude mcp add --transport http midpoint https://mcp.cardcenteringtool.com/mcp`
+- **Cursor / Windsurf / others:** paste the JSON above into the client's MCP settings.
+- **MCP Inspector:** `npx @modelcontextprotocol/inspector` and connect to the endpoint.
+
+No authentication. Streamable HTTP transport. Rate limited per client IP.
+
 ## Tools
 
-| Tool | Use it when | Inputs |
-|---|---|---|
-| `search_cards` | the user names a card | `query`, `game?`, `set_id?`, `limit?` |
-| `get_card_prices` | full raw + graded ladder for one card | `card_id` |
-| `grading_roi` | "is this worth grading?", PSA 10 vs raw, fees, expected value | `card_id`, `grading_fee_usd?` |
-| `get_price_history` | trend over 7–180 days, raw or a PSA grade | `card_id`, `days?`, `grade?` |
-| `best_cards_to_grade` | biggest gem premiums in a game or set | `game`, `set_slug?`, `limit?` |
-| `trending_cards` | biggest 30-day gainers or drops | `game?`, `direction?`, `min_market_usd?`, `limit?` |
-| `liquid_movers` | rising cards that actually sell | `game?`, `limit?` |
-| `list_sets` | find a set id | `game`, `query?`, `limit?` |
-| `get_set_cards` | priced checklist / most valuable in a set | `game`, `set_id`, `sort?`, `limit?` |
+- `search_cards` — Find cards by name, set, number or year and return raw and PSA 10 USD prices with the card id. Inputs: `query`, `game?`, `set_id?`, `limit?`.
+- `get_card_prices` — Full price ladder for one card: raw by condition (NM/LP/MP/HP) and graded prices for PSA, CGC, BGS, SGC and TAG by grade. Inputs: `card_id`.
+- `grading_roi` — Is this card worth grading? Raw vs PSA 9 vs PSA 10, gem premium, net profit after $25/$50/$150 fees, expected value by gem rate, break-even gem rate, which company pays most, plain verdict. Inputs: `card_id`, `grading_fee_usd?`.
+- `get_price_history` — Dated market values over 7 to 180 days for the raw series or a PSA grade. Inputs: `card_id`, `days?`, `grade?`.
+- `best_cards_to_grade` — Cards with the biggest PSA 10 premium over raw in a game or set. Inputs: `game`, `set_slug?`, `limit?`.
+- `trending_cards` — Biggest 30-day gainers or drops, one game or all. Inputs: `game?`, `direction?`, `min_market_usd?`, `limit?`.
+- `liquid_movers` — Rising cards with real sales volume (25+ sales a year). Inputs: `game?`, `limit?`.
+- `list_sets` — Sets and expansions for a game, newest first, with ids. Inputs: `game`, `query?`, `limit?`.
+- `get_set_cards` — Priced checklist or most valuable cards in a set. Inputs: `game`, `set_id`, `sort?`, `limit?`.
 
-Every tool is annotated `readOnlyHint: true`, `destructiveHint: false`, `openWorldHint: false`, returns
+Every tool is read-only (`readOnlyHint: true`, `destructiveHint: false`, `openWorldHint: false`), returns
 `structuredContent` with an output schema, and links back to the matching page on cardcenteringtool.com.
 Card ids are the public URL keys (`swsh7-215`, `pricecharting-1821843`).
 
 Game keys: `pokemon magicthegathering yugioh onepiece lorcana riftbound gundam dragonball digimon baseball
 basketball football hockey soccer wrestling ufc racing tennis golf boxing marvel starwars gpk entertainment
 othertcg`.
-
-## Connect
-
-- **ChatGPT:** install *Midpoint Card Prices* from the plugin directory, or in Developer Mode add a
-  connector with the endpoint above.
-- **Claude:** Customize → Connectors → Add custom connector → paste the endpoint (no auth).
-- **Claude Code:** `claude mcp add --transport http midpoint https://mcp.cardcenteringtool.com/mcp`
-- **Other clients:** add `{ "mcpServers": { "midpoint": { "url": "https://mcp.cardcenteringtool.com/mcp" } } }`
-  to the client's MCP config.
-- **MCP Inspector:** `npx @modelcontextprotocol/inspector` and connect to the endpoint.
 
 ## Data handling
 
