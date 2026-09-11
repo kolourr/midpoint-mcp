@@ -81,6 +81,8 @@ describe('utmSourceFor', () => {
     expect(utmSourceFor('Cursor/1.4')).toBe('cursor')
     expect(utmSourceFor('node')).toBe('mcp')
     expect(utmSourceFor(undefined)).toBe('mcp')
+    expect(utmSourceFor('Mozilla/5.0 Chrome', 'chrome-extension/0.2.0')).toBe('chrome_extension')
+    expect(utmSourceFor('openai-mcp/1.0', '')).toBe('chatgpt_plugin')
     expect(isSharedEgressHost('chatgpt_plugin')).toBe(true)
     expect(isSharedEgressHost('claude')).toBe(true)
     expect(isSharedEgressHost('claude_code')).toBe(false)

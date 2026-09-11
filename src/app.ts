@@ -13,6 +13,8 @@ import { createMcpServer, SERVER_NAME, SERVER_VERSION } from './server.js'
  *   GET  /.well-known/openai-apps-challenge      ChatGPT domain-verification token
  *   GET  /                                       human-readable pointer
  */
+const header = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v)
+
 export const createApp = (ctx: ToolContext) => {
   const app = express()
   app.disable('x-powered-by')
@@ -44,7 +46,7 @@ export const createApp = (ctx: ToolContext) => {
 
   const rateLimit = (req: Request, res: Response, next: NextFunction): void => {
     const ip = clientIp(req.headers, req.socket.remoteAddress ?? 'unknown')
-    const source = utmSourceFor(req.headers['user-agent'])
+    const source = utmSourceFor(req.headers['user-agent'], header(req.headers['x-midpoint-client']))
     // Assistant hosts share egress IPs across all their users: count them
     // per host+IP under the higher ceiling; everyone else per IP.
     const shared = isSharedEgressHost(source)
@@ -70,7 +72,7 @@ export const createApp = (ctx: ToolContext) => {
       seenAgents.add(userAgent)
       console.log(`[mcp] client user-agent: ${userAgent} → utm_source=${utmSourceFor(userAgent)}`)
     }
-    const server = createMcpServer({ ...ctx, links: buildLinks(ctx.config.SITE_URL, utmSourceFor(userAgent)) })
+    const server = createMcpServer({ ...ctx, links: buildLinks(ctx.config.SITE_URL, utmSourceFor(userAgent, header(req.headers['x-midpoint-client']))) })
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
     res.on('close', () => {
       void transport.close()
