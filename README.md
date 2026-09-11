@@ -6,6 +6,7 @@ with Claude, Claude Code, Cursor and any MCP client.
 
 - **Endpoint:** `https://mcp.cardcenteringtool.com/mcp` (Streamable HTTP)
 - **Docs and connect instructions:** <https://www.cardcenteringtool.com/mcp>
+- **Official MCP Registry:** `com.cardcenteringtool/card-prices` (<https://registry.modelcontextprotocol.io/v0.1/servers?search=com.cardcenteringtool>)
 - **Data:** 1.5M+ Pokémon, Magic, Yu-Gi-Oh!, One Piece, Lorcana, Gundam, sports and entertainment cards; USD
   market values from real sold listings, refreshed daily. Same data as <https://www.cardcenteringtool.com/prices>.
 
