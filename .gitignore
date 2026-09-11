@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+.env.*
+*.log
+.DS_Store
+# Portal import file for the ChatGPT plugin submission; kept outside the repo.
+chatgpt-app-submission.json
