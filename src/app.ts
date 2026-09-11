@@ -3,7 +3,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import type { ToolContext } from './lib/context.js'
 import { RateLimiter, clientIp } from './lib/rate-limit.js'
 import { buildLinks } from './lib/links.js'
-import { utmSourceFor } from './lib/client.js'
+import { isSharedEgressHost, utmSourceFor } from './lib/client.js'
 import { createMcpServer, SERVER_NAME, SERVER_VERSION } from './server.js'
 
 /**
@@ -19,7 +19,9 @@ export const createApp = (ctx: ToolContext) => {
   app.set('trust proxy', true)
   app.use(express.json({ limit: '256kb' }))
 
-  const limiter = new RateLimiter(ctx.config.RATE_LIMIT_PER_MINUTE, 60_000)
+  const perIp = ctx.config.RATE_LIMIT_PER_MINUTE
+  const perAgentHost = ctx.config.RATE_LIMIT_PER_MINUTE_AGENTS ?? perIp * 5
+  const limiter = new RateLimiter(perIp, 60_000)
 
   app.get('/healthz', (_req, res) => {
     res.json({ ok: true, name: SERVER_NAME, version: SERVER_VERSION })
@@ -42,7 +44,11 @@ export const createApp = (ctx: ToolContext) => {
 
   const rateLimit = (req: Request, res: Response, next: NextFunction): void => {
     const ip = clientIp(req.headers, req.socket.remoteAddress ?? 'unknown')
-    const verdict = limiter.hit(ip)
+    const source = utmSourceFor(req.headers['user-agent'])
+    // Assistant hosts share egress IPs across all their users: count them
+    // per host+IP under the higher ceiling; everyone else per IP.
+    const shared = isSharedEgressHost(source)
+    const verdict = limiter.hit(shared ? `${source}:${ip}` : ip, shared ? perAgentHost : perIp)
     if (!verdict.allowed) {
       res.status(429).set('Retry-After', String(verdict.retryAfterSec)).json({
         jsonrpc: '2.0',

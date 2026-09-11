@@ -16,6 +16,10 @@ const RULES: Array<[pattern: RegExp, source: string]> = [
   [/copilot|vscode/i, 'copilot']
 ]
 
+/** Hosts whose users all arrive from a shared egress range. */
+const SHARED_EGRESS = new Set(['chatgpt_plugin', 'claude'])
+export const isSharedEgressHost = (utmSource: string): boolean => SHARED_EGRESS.has(utmSource)
+
 export const utmSourceFor = (userAgent: string | undefined): string => {
   if (!userAgent) return 'mcp'
   for (const [pattern, source] of RULES) {

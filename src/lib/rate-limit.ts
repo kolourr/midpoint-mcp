@@ -1,7 +1,8 @@
 /**
- * Fixed-window per-key limiter. Keys are client IPs; ChatGPT and Claude
- * call from a small published egress range, so the limit is deliberately
- * generous per IP and relies on the response cache for real protection.
+ * Fixed-window per-key limiter. Keys are client IPs. ChatGPT and Claude
+ * call from a small published egress range shared by all their users, so
+ * requests from those hosts are counted under a separate, higher ceiling
+ * (see app.ts); the response cache does the real protection.
  */
 interface Window {
   count: number
@@ -17,8 +18,9 @@ export class RateLimiter {
     private readonly now: () => number = Date.now
   ) {}
 
-  /** Returns true when the request is allowed. */
-  hit(key: string): { allowed: boolean; retryAfterSec: number } {
+  /** Returns whether the request is allowed under `limit` (default: the
+   *  limiter's own) for this key's current window. */
+  hit(key: string, limit: number = this.limit): { allowed: boolean; retryAfterSec: number } {
     const now = this.now()
     const current = this.windows.get(key)
     if (!current || current.resetAt <= now) {
@@ -29,7 +31,7 @@ export class RateLimiter {
     const next = { ...current, count: current.count + 1 }
     this.windows.set(key, next)
     return {
-      allowed: next.count <= this.limit,
+      allowed: next.count <= limit,
       retryAfterSec: Math.ceil((next.resetAt - now) / 1000)
     }
   }

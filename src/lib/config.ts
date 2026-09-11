@@ -12,7 +12,10 @@ const schema = z.object({
   SCRYDEX_API_KEY: z.string().optional(),
   SCRYDEX_TEAM_ID: z.string().optional(),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-  RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).default(120)
+  RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).default(120),
+  /** Ceiling for known assistant hosts (ChatGPT, Claude), whose users share
+   *  a few egress IPs. Defaults to 5× the per-IP limit. */
+  RATE_LIMIT_PER_MINUTE_AGENTS: z.coerce.number().int().min(1).optional()
 })
 
 export type Config = z.infer<typeof schema>
