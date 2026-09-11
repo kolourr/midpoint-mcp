@@ -101,9 +101,11 @@ d('live tools', () => {
 
   it('best_cards_to_grade ranks pokemon', async () => {
     const r = await call('best_cards_to_grade', { game: 'pokemon', limit: 5 })
-    const s = r.structuredContent as { cards: Array<{ gem_premium_multiple: number }> }
+    const s = r.structuredContent as { cards: Array<{ expected_net_usd_at_50pct_gem: number; psa9_usd: number; raw_market_usd: number }> }
     expect(s.cards.length).toBe(5)
-    expect(s.cards[0]!.gem_premium_multiple).toBeGreaterThanOrEqual(s.cards[4]!.gem_premium_multiple)
+    expect(s.cards[0]!.expected_net_usd_at_50pct_gem).toBeGreaterThanOrEqual(s.cards[4]!.expected_net_usd_at_50pct_gem)
+    expect(s.cards[0]!.psa9_usd).toBeGreaterThan(0)
+    expect(s.cards[0]!.raw_market_usd).toBeGreaterThanOrEqual(5)
   })
 
   it('trending_cards returns movers across all games and per game', async () => {
