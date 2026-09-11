@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { TtlCache, cacheKey } from '../src/lib/cache.js'
 import { RateLimiter, clientIp } from '../src/lib/rate-limit.js'
 import { buildLinks } from '../src/lib/links.js'
+import { utmSourceFor } from '../src/lib/client.js'
 import { loadConfig } from '../src/lib/config.js'
 
 describe('TtlCache', () => {
@@ -53,10 +54,23 @@ describe('RateLimiter', () => {
 
 describe('links', () => {
   it('builds attributed first-party URLs and encodes ids', () => {
-    const links = buildLinks('https://www.cardcenteringtool.com/')
+    const links = buildLinks('https://www.cardcenteringtool.com/', 'chatgpt_plugin')
     expect(links.card('swsh7-215')).toBe('https://www.cardcenteringtool.com/prices/swsh7-215?utm_source=chatgpt_plugin&utm_medium=mcp')
+    expect(buildLinks('https://x.test').card('a')).toBe('https://x.test/prices/a?utm_source=mcp&utm_medium=mcp')
     expect(links.worthGrading('a b')).toContain('/worth-grading/a%20b?')
     expect(links.measure()).toContain('/measure?')
+  })
+})
+
+describe('utmSourceFor', () => {
+  it('maps known hosts and falls back to mcp', () => {
+    expect(utmSourceFor('openai-mcp/1.0')).toBe('chatgpt_plugin')
+    expect(utmSourceFor('ChatGPT-User/1.0')).toBe('chatgpt_plugin')
+    expect(utmSourceFor('Claude-User/1.0 anthropic')).toBe('claude')
+    expect(utmSourceFor('claude-code/2.1.0')).toBe('claude_code')
+    expect(utmSourceFor('Cursor/1.4')).toBe('cursor')
+    expect(utmSourceFor('node')).toBe('mcp')
+    expect(utmSourceFor(undefined)).toBe('mcp')
   })
 })
 

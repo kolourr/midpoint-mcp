@@ -46,7 +46,7 @@ d('live tools', () => {
     expect(r.isError).toBeFalsy()
     const s = r.structuredContent as { count: number; cards: Array<{ id: string; url: string }> }
     expect(s.count).toBeGreaterThan(0)
-    expect(s.cards[0]?.url).toContain('utm_source=chatgpt_plugin')
+    expect(s.cards[0]?.url).toContain('utm_medium=mcp')
   })
 
   it('search_cards handles a sports query', async () => {

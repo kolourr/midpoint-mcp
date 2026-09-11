@@ -2,6 +2,8 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import type { ToolContext } from './lib/context.js'
 import { RateLimiter, clientIp } from './lib/rate-limit.js'
+import { buildLinks } from './lib/links.js'
+import { utmSourceFor } from './lib/client.js'
 import { createMcpServer, SERVER_NAME, SERVER_VERSION } from './server.js'
 
 /**
@@ -52,8 +54,17 @@ export const createApp = (ctx: ToolContext) => {
     next()
   }
 
+  // Distinct user agents are logged once so the client → utm_source rules
+  // in client.ts can be refined from real traffic. No IPs, no payloads.
+  const seenAgents = new Set<string>()
+
   const handleMcp = async (req: Request, res: Response): Promise<void> => {
-    const server = createMcpServer(ctx)
+    const userAgent = req.headers['user-agent']
+    if (userAgent && !seenAgents.has(userAgent) && seenAgents.size < 200) {
+      seenAgents.add(userAgent)
+      console.log(`[mcp] client user-agent: ${userAgent} → utm_source=${utmSourceFor(userAgent)}`)
+    }
+    const server = createMcpServer({ ...ctx, links: buildLinks(ctx.config.SITE_URL, utmSourceFor(userAgent)) })
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
     res.on('close', () => {
       void transport.close()
