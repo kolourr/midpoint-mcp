@@ -8,6 +8,19 @@ import { cents, money, multiple } from '../lib/format.js'
 import { ok, guarded } from '../lib/tool-result.js'
 
 const WORTH_GRADING_MIN_GRADED = 1000
+/** Above this the "premium" is a poisoned raw or PSA 10 row, not a market
+ *  (Base Set Charizard, the real extreme, is ~190×). */
+const MAX_GEM_PREMIUM = 500
+const CANDIDATE_MULTIPLIER = 3
+
+/** Single poisoned listings: PSA 10 above 100× PSA 9, or a sentinel price. */
+export const isPlausibleGradingRow = (r: Pick<SeoCardRow, 'raw_market' | 'psa10' | 'psa9' | 'gem_premium' | 'best_graded'>): boolean => {
+  const top = r.psa10 ?? r.best_graded
+  if (top !== null && top >= 999_999) return false
+  if (r.psa10 !== null && r.psa9 !== null && r.psa9 > 0 && r.psa10 > r.psa9 * 100) return false
+  if (r.gem_premium !== null && r.gem_premium > MAX_GEM_PREMIUM) return false
+  return true
+}
 
 const input = {
   game: z.enum(GAME_KEYS).describe('Game or sport to rank.'),
@@ -56,10 +69,11 @@ export const registerBestCardsToGrade = (server: McpServer, ctx: ToolContext): v
           .gte('best_graded', WORTH_GRADING_MIN_GRADED)
           .gte('raw_market', 5)
           .not('gem_premium', 'is', null)
+          .lte('gem_premium', MAX_GEM_PREMIUM)
         if (set_slug) q = q.eq('set_slug', set_slug)
-        const { data, error } = await q.order('gem_premium', { ascending: false, nullsFirst: false }).limit(limit)
+        const { data, error } = await q.order('gem_premium', { ascending: false, nullsFirst: false }).limit(limit * CANDIDATE_MULTIPLIER)
         if (error) throw error
-        return (data ?? []) as SeoCardRow[]
+        return ((data ?? []) as SeoCardRow[]).filter(isPlausibleGradingRow).slice(0, limit)
       })) as SeoCardRow[]
 
       const cards = rows.map((r) => ({
@@ -75,7 +89,7 @@ export const registerBestCardsToGrade = (server: McpServer, ctx: ToolContext): v
       }))
       const structured = {
         game: gameLabel(game),
-        criteria: `Ranked by PSA 10 ÷ raw among cards with a graded value ≥ $${WORTH_GRADING_MIN_GRADED} and raw ≥ $5${set_slug ? `, set ${set_slug}` : ''}.`,
+        criteria: `Ranked by PSA 10 ÷ raw among cards with a graded value ≥ $${WORTH_GRADING_MIN_GRADED}, raw ≥ $5 and a plausible ladder (premium ≤ ${MAX_GEM_PREMIUM}×, PSA 10 ≤ 100× PSA 9)${set_slug ? `, set ${set_slug}` : ''}.`,
         count: cards.length,
         cards,
         links: { worth_grading_index: ctx.links.worthGradingIndex() }
