@@ -20,6 +20,9 @@ const MIN_RAW = 5
 const MIN_PSA10 = 100
 /** PSA 10 above 100× PSA 9 is a single poisoned listing, not a market. */
 const MAX_PSA10_TO_PSA9 = 100
+/** A near-miss grade cannot be 100× the raw price either; that is a poisoned
+ *  (or wrong-variant) raw, e.g. a $496 raw next to a $353,800 PSA 9. */
+const MAX_PSA9_TO_RAW = 100
 const CANDIDATE_POOL = 400
 
 export interface RankedCard {
@@ -35,7 +38,8 @@ export const isPlausibleGradingRow = (r: Pick<SeoCardRow, 'raw_market' | 'psa10'
   r.psa10 < 999_999 &&
   r.psa9 !== null &&
   r.psa9 > 0 &&
-  r.psa10 <= r.psa9 * MAX_PSA10_TO_PSA9
+  r.psa10 <= r.psa9 * MAX_PSA10_TO_PSA9 &&
+  r.psa9 <= r.raw_market * MAX_PSA9_TO_RAW
 
 /** Expected net at a 50% gem rate; a miss lands at the PSA 9 price. Pure. */
 export const rankByExpectedNet = (rows: SeoCardRow[], fee: number, limit: number): RankedCard[] =>
@@ -120,7 +124,7 @@ export const registerBestCardsToGrade = (server: McpServer, ctx: ToolContext): v
       }))
       const structured = {
         game: gameLabel(game),
-        criteria: `Ranked by expected net at a 50% gem rate (½ PSA 10 + ½ PSA 9 − raw − $${fee} fee) among cards with raw ≥ $${MIN_RAW}, PSA 10 ≥ $${MIN_PSA10}, a PSA 9 price on record and PSA 10 ≤ ${MAX_PSA10_TO_PSA9}× PSA 9${set_slug ? `, set ${set_slug}` : ''}.`,
+        criteria: `Ranked by expected net at a 50% gem rate (½ PSA 10 + ½ PSA 9 − raw − $${fee} fee) among cards with raw ≥ $${MIN_RAW}, PSA 10 ≥ $${MIN_PSA10}, a PSA 9 price on record, PSA 10 ≤ ${MAX_PSA10_TO_PSA9}× PSA 9 and PSA 9 ≤ ${MAX_PSA9_TO_RAW}× raw${set_slug ? `, set ${set_slug}` : ''}.`,
         assumed_fee_usd: fee,
         count: cards.length,
         cards,

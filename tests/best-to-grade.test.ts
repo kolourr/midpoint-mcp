@@ -14,13 +14,15 @@ describe('isPlausibleGradingRow', () => {
     expect(isPlausibleGradingRow(row('pikachu', 650, 300, 239371))).toBe(false)
     expect(isPlausibleGradingRow(row('no-psa9', 50, null, 4000))).toBe(false)
     expect(isPlausibleGradingRow(row('penny', 2, 20, 300))).toBe(false)
+    expect(isPlausibleGradingRow(row('cousy', 496, 353800, 424560))).toBe(false)
+    expect(isPlausibleGradingRow(row('lebron', 6716, 422400, 506880))).toBe(true)
   })
 })
 
 describe('rankByExpectedNet', () => {
   it('ranks by money, not ratio, and drops negative expectations', () => {
     const rows = [
-      row('thin', 6, 40, 3000),      // 475× premium but EV = 1520-6-25 = 1489
+      row('thin', 6, 40, 3000),      // 475× premium, PSA 9 within 100× raw, EV = 1520-6-25 = 1489
       row('umbreon', 2368, 2337, 3882), // EV = 3109.5-2368-25 = 716.5
       row('charizard', 2146, 10000, 414330), // EV ≈ 210k
       row('loser', 100, 60, 130)     // EV = 95-100-25 < 0
