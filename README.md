@@ -72,7 +72,7 @@ No authentication. Streamable HTTP transport. Rate limited per client IP.
 - `get_card_prices` — Full price ladder for one card: raw by condition (NM/LP/MP/HP) and graded prices for PSA, CGC, BGS, SGC and TAG by grade. Inputs: `card_id`.
 - `grading_roi` — Is this card worth grading? Raw vs PSA 9 vs PSA 10, gem premium, net profit after $25/$50/$150 fees, expected value by gem rate, break-even gem rate, which company pays most, plain verdict. Inputs: `card_id`, `grading_fee_usd?`.
 - `get_price_history` — Dated market values over 7 to 180 days for the raw series or a PSA grade. Inputs: `card_id`, `days?`, `grade?`.
-- `best_cards_to_grade` — Cards with the biggest PSA 10 premium over raw in a game or set. Inputs: `game`, `set_slug?`, `limit?`.
+- `best_cards_to_grade` — Cards with the biggest expected net profit from grading in a game or set (half PSA 10, half PSA 9, minus raw and the fee; both graded prices required). Inputs: `game`, `set_slug?`, `grading_fee_usd?`, `limit?`.
 - `trending_cards` — Biggest 30-day gainers or drops, one game or all. Inputs: `game?`, `direction?`, `min_market_usd?`, `limit?`.
 - `liquid_movers` — Rising cards with real sales volume (25+ sales a year). Inputs: `game?`, `limit?`.
 - `list_sets` — Sets and expansions for a game, newest first, with ids. Inputs: `game`, `query?`, `limit?`.
