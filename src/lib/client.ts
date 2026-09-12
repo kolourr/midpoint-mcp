@@ -16,8 +16,10 @@ const RULES: Array<[pattern: RegExp, source: string]> = [
   [/copilot|vscode/i, 'copilot']
 ]
 
-/** Hosts whose users all arrive from a shared egress range. */
-const SHARED_EGRESS = new Set(['chatgpt_plugin', 'claude'])
+/** Hosts whose users all arrive from a shared egress range. 'app' is the
+ *  Midpoint app's Chat feature: its server calls us on behalf of every
+ *  app user from one IP (X-Midpoint-Client: app/ask). */
+const SHARED_EGRESS = new Set(['chatgpt_plugin', 'claude', 'app'])
 export const isSharedEgressHost = (utmSource: string): boolean => SHARED_EGRESS.has(utmSource)
 
 /** First-party clients (the Chrome extension) identify themselves with an
