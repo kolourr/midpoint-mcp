@@ -71,3 +71,20 @@ describe('stepNote', () => {
     expect(stepNote(pts)).toBeNull()
   })
 })
+
+import { rawFloor, withinRawBounds } from '../src/lib/prices.js'
+describe('raw floor from low grades', () => {
+  const g = (grade: string, market: number) => ({ price_type: 'graded' as const, company: 'PSA', grade, market })
+  it('is half the lowest PSA 1–4 price and drops the $250 Charizard point', () => {
+    const rows = [g('1', 5455.2), g('2', 5940.63), g('2.5', 2249), g('3', 6293.99), g('10', 84579.4)]
+    const floor = rawFloor(rows)
+    expect(floor).toBeCloseTo(1124.5, 1)
+    const b = { ceiling: 84579.4, floor }
+    expect(withinRawBounds(b, 249.95)).toBe(false)
+    expect(withinRawBounds(b, 1500)).toBe(true)
+    expect(withinRawBounds(b, null)).toBe(true)
+  })
+  it('needs two low-grade rows', () => {
+    expect(rawFloor([g('1', 100), g('10', 1000)])).toBeNull()
+  })
+})

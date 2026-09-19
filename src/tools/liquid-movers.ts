@@ -78,7 +78,7 @@ export const registerLiquidMovers = (server: McpServer, ctx: ToolContext): void 
         cards
       }
       const text = cards.length
-        ? [`Rising cards${volumeVerified ? ' with real sales volume' : ' (sales volume not tracked for this source — price move and series stability only)'}${game ? ` in ${gameLabel(game)}` : ''} (raw USD):`, ...cards.map((c, i) => `${i + 1}. ${c.name}${c.set ? ` (${c.set})` : ''}: ${money(c.raw_market_usd)} (${pct(c.change_pct)}${c.sales_per_year ? `, ~${c.sales_per_year} sales/yr` : ''}) · id ${c.id}`)].join('\n')
+        ? [`Rising cards${volumeVerified ? ' with real sales volume' : ' (sales volume not tracked for this source — price move and series stability only)'}${game ? ` in ${gameLabel(game)}` : ''} (raw USD):`, ...cards.map((c, i) => `${i + 1}. ${c.name}${c.set ? ` (${c.set})` : ''}: ${money(c.raw_market_usd)} (${pct(c.change_pct)}, ${c.sales_per_year ? `~${c.sales_per_year} sales/yr` : 'sales/yr not tracked for this source'}) · id ${c.id}`)].join('\n')
         : `No liquid movers${game ? ` in ${gameLabel(game)}` : ''} right now (${structured.criteria}).`
       return ok(structured, text)
     })

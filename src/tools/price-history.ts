@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { ToolContext } from '../lib/context.js'
 import { cacheKey, HOUR } from '../lib/cache.js'
-import { getCatalogCard, getRawAnchor, primaryVariant, RAW_ANCHOR_MULTIPLE, variantLabel } from '../lib/prices.js'
+import { getCatalogCard, getRawBounds, primaryVariant, variantLabel, withinRawBounds, type RawBounds } from '../lib/prices.js'
 import { isPriceChartingId, SCRYDEX_GAMES } from '../lib/games.js'
 import { cents, money, pct } from '../lib/format.js'
 import { fetchScrydexHistory } from '../lib/scrydex.js'
@@ -29,8 +29,8 @@ const output = {
   points: z.array(point).describe('Oldest first. Graded series only contain days with sales; gaps are normal.'),
   first_usd: z.number().nullable(),
   last_usd: z.number().nullable(),
-  change_pct: z.number().nullable(),
-  change_note: z.string().nullable().describe('Set when one step between consecutive captures accounts for the change: usually a data correction, not a market move. Do not quote change_pct as a trend when this is set.'),
+  change_pct: z.number().nullable().describe('First-to-last change; null when change_note is set because a single step carries it.'),
+  change_note: z.string().nullable().describe('Set when one step between consecutive captures accounts for the change: usually a data correction, not a market move. change_pct is null in that case.'),
   source: z.string(),
   links: z.object({ card_page: z.string() })
 }
@@ -97,7 +97,9 @@ export const registerPriceHistory = (server: McpServer, ctx: ToolContext): void 
 
       const first = points.find((p) => p.market_usd !== null)?.market_usd ?? null
       const last = [...points].reverse().find((p) => p.market_usd !== null)?.market_usd ?? null
-      const change = first !== null && last !== null && first > 0 ? cents(((last - first) / first) * 100) : null
+      // No headline change when one step carries it: the number would be
+      // quoted as a trend, and it is not one.
+      const change = changeNote === null && first !== null && last !== null && first > 0 ? cents(((last - first) / first) * 100) : null
       const series = cleanGrade ? `PSA ${cleanGrade}` : 'raw'
       const structured = {
         card_id,
@@ -117,7 +119,7 @@ export const registerPriceHistory = (server: McpServer, ctx: ToolContext): void 
       }
       const sample = points.length > 12 ? points.filter((_, i) => i % Math.ceil(points.length / 12) === 0 || i === points.length - 1) : points
       const text = points.length
-        ? [`${card.name} ${series} price${variant ? ` (${variant} printing)` : ''}, last ${days} days: ${money(first)} → ${money(last)} (${pct(change)}), ${points.length} data points.`, coverage.note, ...(changeNote ? [`Caution: ${changeNote}`] : []), ...sample.map((p) => `- ${p.date}: ${money(p.market_usd)}`), `Chart: ${structured.links.card_page}`].join('\n')
+        ? [`${card.name} ${series} price${variant ? ` (${variant} printing)` : ''}, last ${days} days: ${money(first)} → ${money(last)} (${changeNote ? 'change not meaningful' : pct(change)}), ${points.length} data points.`, coverage.note, ...(changeNote ? [`Caution: ${changeNote}`] : []), ...sample.map((p) => `- ${p.date}: ${money(p.market_usd)}`), `Chart: ${structured.links.card_page}`].join('\n')
         : `No ${series} price points for ${card.name} in the last ${days} days. The card page may still show a longer history: ${structured.links.card_page}`
       return ok(structured, text)
     })
@@ -142,11 +144,13 @@ const loadArchive = async (ctx: ToolContext, cardId: string, days: number, grade
   q = grade ? q.eq('price_type', 'graded').eq('grade', grade).in('company', ['PSA', '']) : q.eq('price_type', 'raw')
   const { data, error } = await q
   if (error) throw error
-  const anchor = grade ? null : await getRawAnchor(ctx.db, cardId)
+  const bounds: RawBounds = grade ? { ceiling: null, floor: null } : await getRawBounds(ctx.db, cardId)
   const all = (data ?? []) as ArchiveRow[]
   const primary = primaryVariant(all.filter((r): r is ArchiveRow & { variant: string } => typeof r.variant === 'string' && r.market !== null))
   const rows = primary === null ? all : all.filter((r) => r.variant === primary)
-  const points = pickDailySeries(rows).filter((p) => anchor === null || p.market_usd === null || p.market_usd <= anchor * RAW_ANCHOR_MULTIPLE)
+  // Raw points outside the card's own graded-implied bounds (troll listing
+  // above, damaged-copy floor below) are data errors, not prices.
+  const points = pickDailySeries(rows).filter((p) => withinRawBounds(bounds, p.market_usd))
   return { points, source: 'Midpoint daily archive of real sold listings', variant: primary === null ? null : variantLabel(primary) }
 }
 
@@ -182,8 +186,8 @@ const loadScrydex = async (ctx: ToolContext, game: string, cardId: string, days:
   const company = grade ? 'PSA' : ''
   const cacheKeyDb = `hist:${game}:${cardId}:${days}:::${company}:${grade ?? ''}`
   const { data: cached } = await ctx.db.from('scrydex_cache').select('payload, fetched_at').eq('cache_key', cacheKeyDb).maybeSingle()
-  const anchor = grade ? null : await getRawAnchor(ctx.db, cardId)
-  const guard = (pts: Point[]): Point[] => (anchor === null ? pts : pts.filter((p) => p.market_usd === null || p.market_usd <= anchor * RAW_ANCHOR_MULTIPLE))
+  const bounds: RawBounds = grade ? { ceiling: null, floor: null } : await getRawBounds(ctx.db, cardId)
+  const guard = (pts: Point[]): Point[] => pts.filter((p) => withinRawBounds(bounds, p.market_usd))
 
   if (cached && Date.now() - new Date(cached.fetched_at as string).getTime() < SCRYDEX_CACHE_TTL_MS) {
     const payload = cached.payload as { points?: Array<{ date: string; market: number | null }> }

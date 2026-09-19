@@ -209,24 +209,27 @@ export const getLatestLadder = async (db: ServiceClient, id: string): Promise<La
 
   const rungsFor = (variant: string): { raw: RawRung[]; graded: GradedRung[] } => {
     const rows = latest.filter((p) => p.variant === variant)
-    const anchor = rawAnchor(rows)
-    const raw = rows
-      .filter((p) => p.price_type === 'raw')
-      .filter((p) => anchor === null || p.market === null || p.market <= anchor * RAW_ANCHOR_MULTIPLE)
-      .sort((a, b) => RAW_ORDER.indexOf(a.condition) - RAW_ORDER.indexOf(b.condition))
+    const bounds: RawBounds = { ceiling: rawAnchor(rows), floor: rawFloor(rows) }
+    const rawRows = rows.filter((p) => p.price_type === 'raw').sort((a, b) => RAW_ORDER.indexOf(a.condition) - RAW_ORDER.indexOf(b.condition))
+    const raw = rawRows
+      .filter((p) => withinRawBounds(bounds, p.market))
       .map((p) => ({ condition: p.condition, market_usd: cents(p.market), low_usd: cents(p.low), high_usd: cents(p.high) }))
+    const droppedLow = rawRows.filter((p) => p.market !== null && bounds.floor !== null && p.market < bounds.floor)
+    if (droppedLow.length && variant === primary) implausible = `Raw ${droppedLow.map((p) => `${p.condition} ${money(p.market)}`).join(', ')} left out: far below what PSA 1–4 copies of this card sell for (${money(bounds.floor as number / RAW_FLOOR_FRACTION)}+), so it is not a market value.`
     const graded = rows
       .filter((p) => p.price_type === 'graded')
       .sort((a, b) => gradeNumber(b.grade) - gradeNumber(a.grade) || a.company.localeCompare(b.company))
       .map((p) => ({ company: p.company || 'Generic', grade: p.grade, market_usd: cents(p.market) }))
     return { raw, graded }
   }
+  let implausible: string | null = null
   const main = primary === null ? { raw: [], graded: [] } : rungsFor(primary)
   const others = [...new Set(latest.map((p) => p.variant))].filter((v) => v !== primary).sort()
     .map((v) => ({ variant: variantLabel(v), ...rungsFor(v) }))
     .filter((v) => v.raw.length + v.graded.length > 0)
 
-  return { captured_on: latest[0]?.captured_on ?? null, variant: primary === null ? null : variantLabel(primary), raw: main.raw, graded: main.graded, other_variants: others, raw_note: rawOrderNote(main.raw) }
+  const raw_note = [implausible, rawOrderNote(main.raw)].filter((n): n is string => n !== null).join(' ') || null
+  return { captured_on: latest[0]?.captured_on ?? null, variant: primary === null ? null : variantLabel(primary), raw: main.raw, graded: main.graded, other_variants: others, raw_note }
 }
 
 /** A single troll listing can poison the raw market price; cap raw at 3×
@@ -240,7 +243,23 @@ const rawAnchor = (rows: PriceRow[]): number | null => {
   return top > 0 ? top : null
 }
 
-export const getRawAnchor = async (db: ServiceClient, id: string): Promise<number | null> => {
+/** The mirror guard: a raw near-mint price far below what the card's own
+ *  damaged graded copies (PSA 1–4) sell for is not a market value either
+ *  (Crystal Charizard raw sat at \$250 while PSA 1 sold for \$5,455). Floor =
+ *  half the lowest low-grade PSA price, when at least two such rows exist. */
+export const RAW_FLOOR_FRACTION = 0.5
+const RAW_FLOOR_MIN_ROWS = 2
+export const rawFloor = (rows: Pick<PriceRow, 'price_type' | 'company' | 'grade' | 'market'>[]): number | null => {
+  const low = rows.filter((r) => r.price_type === 'graded' && r.company === 'PSA' && r.market !== null && r.market > 0 && gradeNumber(r.grade) >= 1 && gradeNumber(r.grade) <= 4).map((r) => r.market as number)
+  if (low.length < RAW_FLOOR_MIN_ROWS) return null
+  return Math.min(...low) * RAW_FLOOR_FRACTION
+}
+
+export interface RawBounds { ceiling: number | null; floor: number | null }
+export const withinRawBounds = (b: RawBounds, v: number | null): boolean =>
+  v === null || ((b.ceiling === null || v <= b.ceiling * RAW_ANCHOR_MULTIPLE) && (b.floor === null || v >= b.floor))
+
+export const getRawBounds = async (db: ServiceClient, id: string): Promise<RawBounds> => {
   const { data, error } = await db
     .from('card_prices')
     .select('company, grade, market, price_type')
@@ -251,8 +270,11 @@ export const getRawAnchor = async (db: ServiceClient, id: string): Promise<numbe
     .eq('is_perfect', false)
     .not('market', 'is', null)
   if (error) throw error
-  return rawAnchor((data ?? []) as PriceRow[])
+  const rows = (data ?? []) as PriceRow[]
+  return { ceiling: rawAnchor(rows), floor: rawFloor(rows) }
 }
+
+export const getRawAnchor = async (db: ServiceClient, id: string): Promise<number | null> => (await getRawBounds(db, id)).ceiling
 
 export const bestGradedLabel = (c: SeoCardRow): string | null => {
   const candidates: Array<[string, number | null]> = [
