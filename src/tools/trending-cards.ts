@@ -6,6 +6,7 @@ import { SEO_CARD_COLS, type SeoCardRow } from '../lib/prices.js'
 import { GAME_KEYS, gameLabel } from '../lib/games.js'
 import { cents, money, pct } from '../lib/format.js'
 import { ok, guarded } from '../lib/tool-result.js'
+import { filterVerified, loadRecentSeries, seriesLooksReal } from '../lib/series-check.js'
 
 /**
  * Reads the daily-rebuilt seo_cards pivot (pct_change_30d), which is
@@ -70,6 +71,8 @@ const output = {
   direction: z.enum(['up', 'down']),
   game: z.string().nullable(),
   count: z.number().int(),
+  excluded_unstable: z.number().int().describe('Candidates dropped because their own 40-day series did not hold together (too few captures, a baseline that swings >2×, a >6× range, or a one-capture jump).'),
+  criteria: z.string(),
   cards: z.array(card)
 }
 
@@ -107,16 +110,20 @@ export const registerTrendingCards = (server: McpServer, ctx: ToolContext): void
     },
     guarded('trending_cards', async ({ game, direction, min_market_usd, limit }) => {
       const key = cacheKey('trending_cards', { game: game ?? '', direction, min_market_usd, limit })
-      const rows = (await ctx.cache.getOrLoad(key, HOUR, async () => {
+      const { rows, dropped } = (await ctx.cache.getOrLoad(key, HOUR, async () => {
         const games = game ? [game] : [...GAME_KEYS]
         const batches = await Promise.all(games.map((g) => perGame(ctx, g, direction, min_market_usd, limit)))
         const sign = direction === 'up' ? -1 : 1
-        return batches
+        const candidates = batches
           .flat()
           .filter((r) => moverOf(r) !== null)
           .sort((a, b) => sign * ((a.pct_change_30d ?? 0) - (b.pct_change_30d ?? 0)))
-          .slice(0, limit)
-      })) as SeoCardRow[]
+          .slice(0, limit * CANDIDATE_MULTIPLIER)
+        // A two-point change on a jumpy series is not a move. Check each
+        // candidate's own recent series before reporting it.
+        const verified = await filterVerified(candidates, limit, async (r) => seriesLooksReal(await loadRecentSeries(ctx.db, r.catalog_card_id, (moverOf(r) as Mover).basis)))
+        return { rows: verified.kept, dropped: verified.dropped }
+      })) as { rows: SeoCardRow[]; dropped: number }
 
       const cards = rows.map((r) => {
         const m = moverOf(r) as Mover
@@ -135,10 +142,18 @@ export const registerTrendingCards = (server: McpServer, ctx: ToolContext): void
           url: ctx.links.card(r.catalog_card_id)
         }
       })
-      const structured = { window_days: 30 as const, direction, game: game ? gameLabel(game) : null, count: cards.length, cards }
+      const structured = {
+        window_days: 30 as const,
+        direction,
+        game: game ? gameLabel(game) : null,
+        count: cards.length,
+        excluded_unstable: dropped,
+        criteria: `Raw price ≥ $${min_market_usd}; change measured on the PSA 10 series where the card has one, else raw; each card on its primary printing; |change| ≤ ${MAX_ABS_PCT}%; baseline ≥ $${MIN_BASELINE_USD}; cards whose own 40-day series is unstable are excluded.`,
+        cards
+      }
       const label = direction === 'up' ? 'gainers' : 'drops'
       const text = cards.length
-        ? [`Biggest 30-day ${label}${game ? ` in ${gameLabel(game)}` : ''} (USD; PSA 10 series where the card has one, raw otherwise; each card measured on its primary printing):`, ...cards.map((c, i) => `${i + 1}. ${c.name}${c.set ? ` (${c.set})` : ''}${game ? '' : ` [${c.game}]`}: ${c.basis} ${money(c.price_30d_ago_usd)} → ${money(c.price_now_usd)} (${pct(c.change_30d_pct)}) · id ${c.id}`)].join('\n')
+        ? [`Biggest 30-day ${label}${game ? ` in ${gameLabel(game)}` : ''} (USD; PSA 10 series where the card has one, raw otherwise; each card measured on its primary printing${dropped ? `; ${dropped} candidate(s) with an unstable series excluded` : ''}):`, ...cards.map((c, i) => `${i + 1}. ${c.name}${c.set ? ` (${c.set})` : ''}${game ? '' : ` [${c.game}]`}: ${c.basis} ${money(c.price_30d_ago_usd)} → ${money(c.price_now_usd)} (${pct(c.change_30d_pct)}) · id ${c.id}`)].join('\n')
         : `No 30-day ${label} above $${min_market_usd}${game ? ` for ${gameLabel(game)}` : ''}.`
       return ok(structured, text)
     })

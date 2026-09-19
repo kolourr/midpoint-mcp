@@ -112,7 +112,9 @@ Biggest 30-day gainers or drops, one game or all.
 
 ### liquid_movers
 
-Rising cards (30-day change > 0) with a recorded sales count of 25+ in the last year. Cards whose source does not
+Rising cards (30-day change > 0) with a recorded sales count of 25+ in the last year. Each candidate's own 40-day
+series is checked first (enough captures, stable baseline, no one-capture jump); unstable ones are dropped and
+counted in `excluded_unstable`. `trending_cards` applies the same check. Cards whose source does not
 track yearly volume are excluded unless `include_unknown_volume` is set.
 
 **Inputs:** `game?`, `include_unknown_volume?`, `limit?`

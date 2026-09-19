@@ -6,6 +6,8 @@ import { toSummary, cardSummarySchema, type CatalogListRow } from '../lib/prices
 import { GAME_KEYS, gameLabel } from '../lib/games.js'
 import { cents, money, pct } from '../lib/format.js'
 import { ok, guarded } from '../lib/tool-result.js'
+import { cacheKey, HOUR } from '../lib/cache.js'
+import { filterVerified, loadRecentSeries, seriesLooksReal } from '../lib/series-check.js'
 
 /** Thresholds the app's Home shelf uses; the RPC is too slow to vary per call. */
 const MIN_VOLUME = 25
@@ -28,6 +30,7 @@ const output = {
   as_of: z.string().describe('When this ranking was computed (ISO 8601)'),
   criteria: z.string(),
   count: z.number().int(),
+  excluded_unstable: z.number().int().describe('Candidates dropped because their own 40-day raw series did not hold together.'),
   cards: z.array(cardSummarySchema.extend({ change_pct: z.number().nullable(), sales_per_year: z.number().int().nullable().describe('Recorded sales in the last year; null only when include_unknown_volume is on and the source does not track volume.') }))
 }
 
@@ -46,12 +49,16 @@ export const registerLiquidMovers = (server: McpServer, ctx: ToolContext): void 
       const { value, loadedAt } = await ctx.warm.liquidMovers.get()
       // The shared cache ranks by |change| and lets untracked volume through;
       // this tool promises RISING cards with REAL volume, so filter here.
-      const rows = value
+      const candidates = value
         .filter((r) => !game || r.game === game)
         .filter((r) => (r.pct ?? 0) > 0)
         .filter((r) => include_unknown_volume || (r.sales_volume !== null && r.sales_volume !== undefined && r.sales_volume >= MIN_VOLUME))
         .sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0))
-        .slice(0, limit)
+      const key = cacheKey('liquid_movers_verified', { game: game ?? '', include_unknown_volume, limit, at: loadedAt })
+      const { rows, dropped } = (await ctx.cache.getOrLoad(key, HOUR, async () => {
+        const v = await filterVerified(candidates, limit, async (r) => seriesLooksReal(await loadRecentSeries(ctx.db, r.id, 'raw')))
+        return { rows: v.kept, dropped: v.dropped }
+      })) as { rows: CatalogListRow[]; dropped: number }
       const cards = rows.map((r) => ({
         ...toSummary(r, ctx.links.card(r.id)),
         change_pct: cents(r.pct),
@@ -63,6 +70,7 @@ export const registerLiquidMovers = (server: McpServer, ctx: ToolContext): void 
           ? `Raw price ≥ $${MIN_MARKET}, 30-day change > 0, ranked by change; cards without a tracked yearly sales count are included (sales_per_year null).`
           : `Raw price ≥ $${MIN_MARKET}, ≥ ${MIN_VOLUME} recorded sales in the last year, 30-day change > 0, ranked by change.`,
         count: cards.length,
+        excluded_unstable: dropped,
         cards
       }
       const text = cards.length
