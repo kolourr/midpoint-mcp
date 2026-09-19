@@ -23,8 +23,11 @@ const output = {
   }),
   currency: z.literal('USD'),
   captured_on: z.string().nullable().describe('Date of the latest price capture (UTC)'),
+  variant: z.string().nullable().describe('The printing the raw and graded rungs refer to (e.g. "holofoil", "1st edition"). Other printings are listed under other_variants.'),
+  raw_note: z.string().nullable().describe('Set when the raw condition ladder is out of order (thin data): treat raw prices as low confidence.'),
   raw: z.array(z.object({ condition: z.string(), market_usd: z.number().nullable(), low_usd: z.number().nullable(), high_usd: z.number().nullable() })),
   graded: z.array(z.object({ company: z.string(), grade: z.string(), market_usd: z.number().nullable() })),
+  other_variants: z.array(z.object({ variant: z.string(), raw: z.array(z.object({ condition: z.string(), market_usd: z.number().nullable(), low_usd: z.number().nullable(), high_usd: z.number().nullable() })), graded: z.array(z.object({ company: z.string(), grade: z.string(), market_usd: z.number().nullable() })) })).describe('Other printings of the same card id (reverse holo, 1st edition…) with their own prices. Never mix these with the main ladder.'),
   summary: z.object({
     raw_market_usd: z.number().nullable(),
     psa9_usd: z.number().nullable(),
@@ -75,8 +78,11 @@ export const registerGetCardPrices = (server: McpServer, ctx: ToolContext): void
         },
         currency: 'USD' as const,
         captured_on: ladder.captured_on ?? seo?.captured_on ?? null,
+        variant: ladder.variant,
+        raw_note: ladder.raw_note,
         raw: ladder.raw,
         graded: ladder.graded,
+        other_variants: ladder.other_variants,
         summary,
         links: { card_page: ctx.links.card(card.id), worth_grading: ctx.links.worthGrading(card.id) }
       }
@@ -84,15 +90,18 @@ export const registerGetCardPrices = (server: McpServer, ctx: ToolContext): void
       const head = `${card.name}${card.expansion_name ? ` — ${card.expansion_name}` : ''}${structured.card.number ? ` #${structured.card.number}` : ''} (${structured.card.game})`
       const rawLines = ladder.raw.length ? ladder.raw.map((r) => `- ${r.condition}: ${money(r.market_usd)}`) : ['- no recent raw sales']
       const gradedLines = ladder.graded.length ? ladder.graded.slice(0, 12).map((g) => `- ${g.company} ${g.grade}: ${money(g.market_usd)}`) : ['- no recent graded sales']
+      const otherLines = ladder.other_variants.map((v) => `- ${v.variant}: ${[...v.raw.slice(0, 1).map((r) => `raw ${r.condition} ${money(r.market_usd)}`), ...v.graded.slice(0, 2).map((g) => `${g.company} ${g.grade} ${money(g.market_usd)}`)].join(', ') || 'no recent sales'}`)
       const text = [
         head,
-        `USD market prices from real sold listings, last capture ${structured.captured_on ?? 'n/a'}${summary.change_30d_pct !== null ? `, 30-day change ${pct(summary.change_30d_pct)}` : ''}.`,
+        `USD market prices from real sold listings, last capture ${structured.captured_on ?? 'n/a'}${summary.change_30d_pct !== null ? `, 30-day change ${pct(summary.change_30d_pct)}` : ''}.${ladder.variant ? ` Prices below are for the ${ladder.variant} printing.` : ''}`,
         '',
         'Raw (ungraded):',
         ...rawLines,
+        ...(ladder.raw_note ? [`Note: ${ladder.raw_note}`] : []),
         '',
         'Graded:',
         ...gradedLines,
+        ...(otherLines.length ? ['', 'Other printings of this card (separate markets):', ...otherLines] : []),
         '',
         `Full ladder and price history: ${structured.links.card_page}`
       ].join('\n')

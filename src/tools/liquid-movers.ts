@@ -20,6 +20,7 @@ export const loadLiquidMovers = async (db: ServiceClient): Promise<CatalogListRo
 
 const input = {
   game: z.enum(GAME_KEYS).optional().describe('Restrict to one game or sport; omit for all.'),
+  include_unknown_volume: z.boolean().default(false).describe('Also include cards whose yearly sales count is not tracked (mostly Pokémon from the Scrydex source). Off by default so every result has a verifiable sales figure.'),
   limit: z.number().int().min(1).max(50).default(15)
 }
 
@@ -27,7 +28,7 @@ const output = {
   as_of: z.string().describe('When this ranking was computed (ISO 8601)'),
   criteria: z.string(),
   count: z.number().int(),
-  cards: z.array(cardSummarySchema.extend({ change_pct: z.number().nullable(), sales_per_year: z.number().int().nullable() }))
+  cards: z.array(cardSummarySchema.extend({ change_pct: z.number().nullable(), sales_per_year: z.number().int().nullable().describe('Recorded sales in the last year; null only when include_unknown_volume is on and the source does not track volume.') }))
 }
 
 export const registerLiquidMovers = (server: McpServer, ctx: ToolContext): void => {
@@ -41,9 +42,16 @@ export const registerLiquidMovers = (server: McpServer, ctx: ToolContext): void 
       outputSchema: output,
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     },
-    guarded('liquid_movers', async ({ game, limit }) => {
+    guarded('liquid_movers', async ({ game, include_unknown_volume, limit }) => {
       const { value, loadedAt } = await ctx.warm.liquidMovers.get()
-      const rows = value.filter((r) => !game || r.game === game).slice(0, limit)
+      // The shared cache ranks by |change| and lets untracked volume through;
+      // this tool promises RISING cards with REAL volume, so filter here.
+      const rows = value
+        .filter((r) => !game || r.game === game)
+        .filter((r) => (r.pct ?? 0) > 0)
+        .filter((r) => include_unknown_volume || (r.sales_volume !== null && r.sales_volume !== undefined && r.sales_volume >= MIN_VOLUME))
+        .sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0))
+        .slice(0, limit)
       const cards = rows.map((r) => ({
         ...toSummary(r, ctx.links.card(r.id)),
         change_pct: cents(r.pct),
@@ -51,7 +59,9 @@ export const registerLiquidMovers = (server: McpServer, ctx: ToolContext): void 
       }))
       const structured = {
         as_of: new Date(loadedAt).toISOString(),
-        criteria: `Raw price ≥ $${MIN_MARKET}, ≥ ${MIN_VOLUME} sales/year, ranked by recent price change.`,
+        criteria: include_unknown_volume
+          ? `Raw price ≥ $${MIN_MARKET}, 30-day change > 0, ranked by change; cards without a tracked yearly sales count are included (sales_per_year null).`
+          : `Raw price ≥ $${MIN_MARKET}, ≥ ${MIN_VOLUME} recorded sales in the last year, 30-day change > 0, ranked by change.`,
         count: cards.length,
         cards
       }

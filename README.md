@@ -78,6 +78,9 @@ Find cards by name, set, number or year and return raw and PSA 10 USD prices wit
 ### get_card_prices
 
 Full price ladder for one card: raw by condition (NM/LP/MP/HP) and graded prices for PSA, CGC, BGS, SGC and TAG by grade.
+The ladder is for the card's **primary printing** (`variant`, e.g. "holofoil"); other printings of the same id
+(reverse holo, 1st edition…) come back separately under `other_variants` and are never mixed in. `raw_note` is
+set when the raw ladder is out of condition order (thin data).
 
 **Inputs:** `card_id`
 
@@ -89,7 +92,9 @@ Is this card worth grading? Raw vs PSA 9 vs PSA 10, gem premium, net profit afte
 
 ### get_price_history
 
-Dated market values over 7 to 180 days for the raw series or a PSA grade.
+Dated market values over 7 to 180 days for the raw series or a PSA grade (1–10, half grades allowed). The series
+follows one printing (`variant`). `coverage` says how many of the days have a capture and how to read repeated or
+sparse values: a value repeated on consecutive days is an unchanged market estimate, not a frozen market.
 
 **Inputs:** `card_id`, `days?`, `grade?`
 
@@ -107,9 +112,10 @@ Biggest 30-day gainers or drops, one game or all.
 
 ### liquid_movers
 
-Rising cards with real sales volume (25+ sales a year).
+Rising cards (30-day change > 0) with a recorded sales count of 25+ in the last year. Cards whose source does not
+track yearly volume are excluded unless `include_unknown_volume` is set.
 
-**Inputs:** `game?`, `limit?`
+**Inputs:** `game?`, `include_unknown_volume?`, `limit?`
 
 ### list_sets
 

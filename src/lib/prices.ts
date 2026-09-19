@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { ServiceClient } from './supabase.js'
-import { cents } from './format.js'
+import { cents, money } from './format.js'
 
 /** Row shape shared by every list-style RPC (search, trending, sets…). */
 export interface CatalogListRow {
@@ -132,10 +132,48 @@ export interface GradedRung {
   grade: string
   market_usd: number | null
 }
-export interface Ladder {
-  captured_on: string | null
+export interface VariantLadder {
+  variant: string
   raw: RawRung[]
   graded: GradedRung[]
+}
+export interface Ladder {
+  captured_on: string | null
+  /** The printing the raw/graded rungs below belong to ("holofoil", "firstEdition"…). */
+  variant: string | null
+  raw: RawRung[]
+  graded: GradedRung[]
+  /** Other printings of the same card id, each with its own rungs. */
+  other_variants: VariantLadder[]
+  /** Set when the raw rungs are not in condition order (e.g. LP above NM): thin data. */
+  raw_note: string | null
+}
+
+/** Human label for a Scrydex/PriceCharting variant code. */
+export const variantLabel = (v: string | null | undefined): string => {
+  if (!v) return 'standard'
+  return v.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/\b1st\b/g, '1st').toLowerCase().replace(/^first edition/, '1st edition')
+}
+
+/** The printing with the most clean rows is the one buyers mean by default. */
+export const primaryVariant = <T extends { variant: string }>(rows: T[]): string | null => {
+  const counts = new Map<string, number>()
+  for (const r of rows) counts.set(r.variant, (counts.get(r.variant) ?? 0) + 1)
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? null
+}
+
+const RAW_ORDER_STRICT = ['NM', 'LP', 'MP', 'HP', 'DM']
+/** "LP $2,400 above NM $1,500" → a note, so the caller does not present the ladder as solid. */
+export const rawOrderNote = (raw: RawRung[]): string | null => {
+  const ranked = raw.filter((r) => r.market_usd !== null && RAW_ORDER_STRICT.includes(r.condition)).sort((a, b) => RAW_ORDER_STRICT.indexOf(a.condition) - RAW_ORDER_STRICT.indexOf(b.condition))
+  for (let i = 1; i < ranked.length; i += 1) {
+    const better = ranked[i - 1], worse = ranked[i]
+    if (!better || !worse) continue
+    if ((worse.market_usd as number) > (better.market_usd as number) * 1.1) {
+      return `${worse.condition} (${money(worse.market_usd)}) is priced above ${better.condition} (${money(better.market_usd)}): few recent sales in one of these conditions, so treat the raw ladder as low confidence and lean on the graded prices.`
+    }
+  }
+  return null
 }
 
 const RAW_ORDER = ['NM', 'LP', 'MP', 'HP', 'DM', 'Ungraded']
@@ -164,20 +202,31 @@ export const getLatestLadder = async (db: ServiceClient, id: string): Promise<La
     const key = `${row.variant}|${row.price_type}|${row.condition}|${row.company}|${row.grade}`
     if (!seen.has(key)) seen.set(key, row)
   }
+  const all = (data ?? []) as PriceRow[]
+  const clean = all.filter((r) => !r.is_signed && !r.is_perfect && !r.is_error && r.market !== null)
+  const primary = primaryVariant(clean)
   const latest = [...seen.values()]
-  const anchor = rawAnchor(latest)
 
-  const raw = latest
-    .filter((p) => p.price_type === 'raw')
-    .filter((p) => anchor === null || p.market === null || p.market <= anchor * RAW_ANCHOR_MULTIPLE)
-    .sort((a, b) => RAW_ORDER.indexOf(a.condition) - RAW_ORDER.indexOf(b.condition))
-    .map((p) => ({ condition: p.condition, market_usd: cents(p.market), low_usd: cents(p.low), high_usd: cents(p.high) }))
-  const graded = latest
-    .filter((p) => p.price_type === 'graded')
-    .sort((a, b) => gradeNumber(b.grade) - gradeNumber(a.grade) || a.company.localeCompare(b.company))
-    .map((p) => ({ company: p.company || 'Generic', grade: p.grade, market_usd: cents(p.market) }))
+  const rungsFor = (variant: string): { raw: RawRung[]; graded: GradedRung[] } => {
+    const rows = latest.filter((p) => p.variant === variant)
+    const anchor = rawAnchor(rows)
+    const raw = rows
+      .filter((p) => p.price_type === 'raw')
+      .filter((p) => anchor === null || p.market === null || p.market <= anchor * RAW_ANCHOR_MULTIPLE)
+      .sort((a, b) => RAW_ORDER.indexOf(a.condition) - RAW_ORDER.indexOf(b.condition))
+      .map((p) => ({ condition: p.condition, market_usd: cents(p.market), low_usd: cents(p.low), high_usd: cents(p.high) }))
+    const graded = rows
+      .filter((p) => p.price_type === 'graded')
+      .sort((a, b) => gradeNumber(b.grade) - gradeNumber(a.grade) || a.company.localeCompare(b.company))
+      .map((p) => ({ company: p.company || 'Generic', grade: p.grade, market_usd: cents(p.market) }))
+    return { raw, graded }
+  }
+  const main = primary === null ? { raw: [], graded: [] } : rungsFor(primary)
+  const others = [...new Set(latest.map((p) => p.variant))].filter((v) => v !== primary).sort()
+    .map((v) => ({ variant: variantLabel(v), ...rungsFor(v) }))
+    .filter((v) => v.raw.length + v.graded.length > 0)
 
-  return { captured_on: latest[0]?.captured_on ?? null, raw, graded }
+  return { captured_on: latest[0]?.captured_on ?? null, variant: primary === null ? null : variantLabel(primary), raw: main.raw, graded: main.graded, other_variants: others, raw_note: rawOrderNote(main.raw) }
 }
 
 /** A single troll listing can poison the raw market price; cap raw at 3×

@@ -138,7 +138,7 @@ export const registerTrendingCards = (server: McpServer, ctx: ToolContext): void
       const structured = { window_days: 30 as const, direction, game: game ? gameLabel(game) : null, count: cards.length, cards }
       const label = direction === 'up' ? 'gainers' : 'drops'
       const text = cards.length
-        ? [`Biggest 30-day ${label}${game ? ` in ${gameLabel(game)}` : ''} (USD; PSA 10 series where the card has one, raw otherwise):`, ...cards.map((c, i) => `${i + 1}. ${c.name}${c.set ? ` (${c.set})` : ''}${game ? '' : ` [${c.game}]`}: ${c.basis} ${money(c.price_30d_ago_usd)} → ${money(c.price_now_usd)} (${pct(c.change_30d_pct)}) · id ${c.id}`)].join('\n')
+        ? [`Biggest 30-day ${label}${game ? ` in ${gameLabel(game)}` : ''} (USD; PSA 10 series where the card has one, raw otherwise; each card measured on its primary printing):`, ...cards.map((c, i) => `${i + 1}. ${c.name}${c.set ? ` (${c.set})` : ''}${game ? '' : ` [${c.game}]`}: ${c.basis} ${money(c.price_30d_ago_usd)} → ${money(c.price_now_usd)} (${pct(c.change_30d_pct)}) · id ${c.id}`)].join('\n')
         : `No 30-day ${label} above $${min_market_usd}${game ? ` for ${gameLabel(game)}` : ''}.`
       return ok(structured, text)
     })

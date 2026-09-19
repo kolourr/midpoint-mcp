@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { ToolContext } from '../lib/context.js'
 import { cacheKey, HOUR } from '../lib/cache.js'
-import { getCatalogCard, getRawAnchor, RAW_ANCHOR_MULTIPLE } from '../lib/prices.js'
+import { getCatalogCard, getRawAnchor, primaryVariant, RAW_ANCHOR_MULTIPLE, variantLabel } from '../lib/prices.js'
 import { isPriceChartingId, SCRYDEX_GAMES } from '../lib/games.js'
 import { cents, money, pct } from '../lib/format.js'
 import { fetchScrydexHistory } from '../lib/scrydex.js'
@@ -19,7 +19,12 @@ const output = {
   card_id: z.string(),
   name: z.string(),
   series: z.string().describe('"raw" or "PSA <grade>"'),
+  variant: z.string().nullable().describe('The printing the series follows (e.g. "holofoil"); other printings are separate markets and are never mixed in.'),
   days: z.number().int(),
+  coverage: z.object({
+    days_with_data: z.number().int(),
+    note: z.string()
+  }).describe('How many of the requested days have a capture, and how to read repeated or sparse values.'),
   currency: z.literal('USD'),
   points: z.array(point).describe('Oldest first. Graded series only contain days with sales; gaps are normal.'),
   first_usd: z.number().nullable(),
@@ -31,6 +36,17 @@ const output = {
 
 interface Point { date: string; market_usd: number | null }
 const SCRYDEX_CACHE_TTL_MS = 24 * HOUR
+const PSA_GRADES = new Set(['1', '1.5', '2', '2.5', '3', '3.5', '4', '4.5', '5', '5.5', '6', '6.5', '7', '7.5', '8', '8.5', '9', '9.5', '10'])
+
+/** Captures happen on a subset of days; say so instead of letting a flat
+ *  or sparse series read as a frozen or wildly swinging market. */
+export const coverageNote = (points: Point[], days: number): { days_with_data: number; note: string } => {
+  const n = points.filter((p) => p.market_usd !== null).length
+  const parts: string[] = [`${n} of the last ${days} days have a price capture.`]
+  if (n > 0 && n < Math.max(4, Math.round(days / 6))) parts.push(`Sparse series: the change figure compares the first and last capture only and can be moved by a single day; check the card page chart before quoting a trend.`)
+  parts.push('A value repeated on consecutive days is an unchanged market estimate (no new sales in between), not a frozen market.')
+  return { days_with_data: n, note: parts.join(' ') }
+}
 
 export const registerPriceHistory = (server: McpServer, ctx: ToolContext): void => {
   server.registerTool(
@@ -47,12 +63,14 @@ export const registerPriceHistory = (server: McpServer, ctx: ToolContext): void 
       const card = await getCatalogCard(ctx.db, card_id)
       if (!card) return fail(`No card with id "${card_id}". Call search_cards to find the id first.`)
       const cleanGrade = grade?.replace(/[^0-9.]/g, '') || undefined
+      if (cleanGrade !== undefined && !PSA_GRADES.has(cleanGrade)) return fail(`"${grade}" is not a PSA grade. Use a whole or half grade from 1 to 10 (e.g. "10", "9", "8.5"), or omit grade for the raw series.`)
 
       const key = cacheKey('get_price_history', { card_id, days, grade: cleanGrade ?? '' })
-      const { points, source } = (await ctx.cache.getOrLoad(key, HOUR, async () => {
+      const { points, source, variant } = (await ctx.cache.getOrLoad(key, HOUR, async () => {
         const useScrydex = !isPriceChartingId(card_id) && SCRYDEX_GAMES.has(card.game) && ctx.config.SCRYDEX_API_KEY && ctx.config.SCRYDEX_TEAM_ID
         return useScrydex ? loadScrydex(ctx, card.game, card_id, days, cleanGrade) : loadArchive(ctx, card_id, days, cleanGrade)
-      })) as { points: Point[]; source: string }
+      })) as { points: Point[]; source: string; variant: string | null }
+      const coverage = coverageNote(points, days)
 
       const first = points.find((p) => p.market_usd !== null)?.market_usd ?? null
       const last = [...points].reverse().find((p) => p.market_usd !== null)?.market_usd ?? null
@@ -62,7 +80,9 @@ export const registerPriceHistory = (server: McpServer, ctx: ToolContext): void 
         card_id,
         name: card.name,
         series,
+        variant,
         days,
+        coverage,
         currency: 'USD' as const,
         points,
         first_usd: first,
@@ -73,19 +93,22 @@ export const registerPriceHistory = (server: McpServer, ctx: ToolContext): void 
       }
       const sample = points.length > 12 ? points.filter((_, i) => i % Math.ceil(points.length / 12) === 0 || i === points.length - 1) : points
       const text = points.length
-        ? [`${card.name} ${series} price, last ${days} days: ${money(first)} → ${money(last)} (${pct(change)}), ${points.length} data points.`, ...sample.map((p) => `- ${p.date}: ${money(p.market_usd)}`), `Chart: ${structured.links.card_page}`].join('\n')
+        ? [`${card.name} ${series} price${variant ? ` (${variant} printing)` : ''}, last ${days} days: ${money(first)} → ${money(last)} (${pct(change)}), ${points.length} data points.`, coverage.note, ...sample.map((p) => `- ${p.date}: ${money(p.market_usd)}`), `Chart: ${structured.links.card_page}`].join('\n')
         : `No ${series} price points for ${card.name} in the last ${days} days. The card page may still show a longer history: ${structured.links.card_page}`
       return ok(structured, text)
     })
   )
 }
 
-/** Our own daily snapshot archive. PSA or generic-company rungs for graded. */
-const loadArchive = async (ctx: ToolContext, cardId: string, days: number, grade?: string): Promise<{ points: Point[]; source: string }> => {
+/** Our own daily snapshot archive. PSA or generic-company rungs for graded.
+ *  Follows ONE printing (the variant with the most rows in the window):
+ *  a card id can hold holofoil and reverse-holofoil rows on the same day,
+ *  10× apart, and picking per day at random produced one-day "blips". */
+const loadArchive = async (ctx: ToolContext, cardId: string, days: number, grade?: string): Promise<{ points: Point[]; source: string; variant: string | null }> => {
   const since = new Date(Date.now() - days * 24 * HOUR).toISOString().slice(0, 10)
   let q = ctx.db
     .from('card_prices')
-    .select('captured_on, market, company, grade, price_type, is_signed, is_error, is_perfect')
+    .select('captured_on, market, company, grade, price_type, variant, condition, is_signed, is_error, is_perfect')
     .eq('catalog_card_id', cardId)
     .gte('captured_on', since)
     .eq('is_signed', false)
@@ -96,9 +119,11 @@ const loadArchive = async (ctx: ToolContext, cardId: string, days: number, grade
   const { data, error } = await q
   if (error) throw error
   const anchor = grade ? null : await getRawAnchor(ctx.db, cardId)
-  const rows = (data ?? []) as ArchiveRow[]
+  const all = (data ?? []) as ArchiveRow[]
+  const primary = primaryVariant(all.filter((r): r is ArchiveRow & { variant: string } => typeof r.variant === 'string' && r.market !== null))
+  const rows = primary === null ? all : all.filter((r) => r.variant === primary)
   const points = pickDailySeries(rows).filter((p) => anchor === null || p.market_usd === null || p.market_usd <= anchor * RAW_ANCHOR_MULTIPLE)
-  return { points, source: 'Midpoint daily archive of real sold listings' }
+  return { points, source: 'Midpoint daily archive of real sold listings', variant: primary === null ? null : variantLabel(primary) }
 }
 
 export interface ArchiveRow {
@@ -106,6 +131,7 @@ export interface ArchiveRow {
   market: number | null
   condition?: string | null
   company?: string | null
+  variant?: string | null
 }
 
 /** Raw rows carry several conditions per day; the series must follow one.
@@ -128,7 +154,7 @@ export const pickDailySeries = (rows: ArchiveRow[]): Point[] => {
 }
 
 /** Live Scrydex history, cached 24h in scrydex_cache (shared with the web app). */
-const loadScrydex = async (ctx: ToolContext, game: string, cardId: string, days: number, grade?: string): Promise<{ points: Point[]; source: string }> => {
+const loadScrydex = async (ctx: ToolContext, game: string, cardId: string, days: number, grade?: string): Promise<{ points: Point[]; source: string; variant: string | null }> => {
   const company = grade ? 'PSA' : ''
   const cacheKeyDb = `hist:${game}:${cardId}:${days}:::${company}:${grade ?? ''}`
   const { data: cached } = await ctx.db.from('scrydex_cache').select('payload, fetched_at').eq('cache_key', cacheKeyDb).maybeSingle()
@@ -137,7 +163,7 @@ const loadScrydex = async (ctx: ToolContext, game: string, cardId: string, days:
 
   if (cached && Date.now() - new Date(cached.fetched_at as string).getTime() < SCRYDEX_CACHE_TTL_MS) {
     const payload = cached.payload as { points?: Array<{ date: string; market: number | null }> }
-    return { points: guard((payload.points ?? []).map((p) => ({ date: p.date, market_usd: cents(p.market) }))), source: 'Scrydex market history (cached)' }
+    return { points: guard((payload.points ?? []).map((p) => ({ date: p.date, market_usd: cents(p.market) }))), source: 'Scrydex market history (cached)', variant: null }
   }
 
   try {
@@ -155,7 +181,7 @@ const loadScrydex = async (ctx: ToolContext, game: string, cardId: string, days:
       .filter((p) => p.market !== null)
       .reverse()
     await ctx.db.from('scrydex_cache').upsert({ cache_key: cacheKeyDb, payload: { cardId, days, points: raw }, fetched_at: new Date().toISOString() })
-    return { points: guard(raw.map((p) => ({ date: p.date, market_usd: cents(p.market) }))), source: 'Scrydex market history' }
+    return { points: guard(raw.map((p) => ({ date: p.date, market_usd: cents(p.market) }))), source: 'Scrydex market history', variant: null }
   } catch (error) {
     console.error('[get_price_history] scrydex failed, falling back to archive:', error instanceof Error ? error.message : error)
     return loadArchive(ctx, cardId, days, grade)
