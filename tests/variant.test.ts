@@ -58,3 +58,16 @@ describe('coverageNote', () => {
     expect(coverageNote(pts, 30).note).not.toMatch(/Sparse/)
   })
 })
+
+import { stepNote } from '../src/tools/price-history.js'
+describe('stepNote', () => {
+  it('flags a flat series with one 6× step', () => {
+    const pts = [...Array(8)].map((_, i) => ({ date: `2026-08-${String(4 + i).padStart(2, '0')}`, market_usd: 249.95 })).concat([{ date: '2026-09-15', market_usd: 1500 }, { date: '2026-09-18', market_usd: 1500 }])
+    const n = stepNote(pts)
+    expect(n).toMatch(/single step from \$250 to \$1,500 on 2026-09-15 accounts for the whole change/)
+  })
+  it('stays quiet on a gradual climb', () => {
+    const pts = [...Array(10)].map((_, i) => ({ date: `2026-09-${String(1 + i).padStart(2, '0')}`, market_usd: 100 * 1.15 ** i }))
+    expect(stepNote(pts)).toBeNull()
+  })
+})

@@ -30,6 +30,7 @@ const output = {
   first_usd: z.number().nullable(),
   last_usd: z.number().nullable(),
   change_pct: z.number().nullable(),
+  change_note: z.string().nullable().describe('Set when one step between consecutive captures accounts for the change: usually a data correction, not a market move. Do not quote change_pct as a trend when this is set.'),
   source: z.string(),
   links: z.object({ card_page: z.string() })
 }
@@ -40,6 +41,27 @@ const PSA_GRADES = new Set(['1', '1.5', '2', '2.5', '3', '3.5', '4', '4.5', '5',
 
 /** Captures happen on a subset of days; say so instead of letting a flat
  *  or sparse series read as a frozen or wildly swinging market. */
+/** A flat series that jumps ≥2.5× (or drops to ≤40%) in one step and stays
+ *  there is a corrected price, not a trend; say so instead of headlining it. */
+export const stepNote = (points: Point[]): string | null => {
+  const vals = points.filter((p): p is { date: string; market_usd: number } => p.market_usd !== null && p.market_usd > 0)
+  if (vals.length < 3) return null
+  let worst: { from: number; to: number; date: string; ratio: number } | null = null
+  for (let i = 1; i < vals.length; i += 1) {
+    const a = vals[i - 1], b = vals[i]
+    if (!a || !b) continue
+    const ratio = b.market_usd / a.market_usd
+    const size = ratio >= 1 ? ratio : 1 / ratio
+    if ((ratio >= 2.5 || ratio <= 0.4) && (!worst || size > worst.ratio)) worst = { from: a.market_usd, to: b.market_usd, date: b.date, ratio: size }
+  }
+  if (!worst) return null
+  const first = vals[0]?.market_usd ?? 0, last = vals[vals.length - 1]?.market_usd ?? 0
+  const overall = first > 0 ? last / first : 1
+  const stepShare = Math.abs(Math.log(worst.to / worst.from)) / Math.max(1e-9, Math.abs(Math.log(overall)))
+  const carries = Number.isFinite(stepShare) && stepShare >= 0.8
+  return `A single step from ${money(worst.from)} to ${money(worst.to)} on ${worst.date}${carries ? ' accounts for the whole change' : ' dominates the series'}; a jump of that size between two captures on an otherwise flat series is usually a corrected price, not a market move. Do not quote the change figure as a trend.`
+}
+
 export const coverageNote = (points: Point[], days: number): { days_with_data: number; note: string } => {
   const n = points.filter((p) => p.market_usd !== null).length
   const parts: string[] = [`${n} of the last ${days} days have a price capture.`]
@@ -71,6 +93,7 @@ export const registerPriceHistory = (server: McpServer, ctx: ToolContext): void 
         return useScrydex ? loadScrydex(ctx, card.game, card_id, days, cleanGrade) : loadArchive(ctx, card_id, days, cleanGrade)
       })) as { points: Point[]; source: string; variant: string | null }
       const coverage = coverageNote(points, days)
+      const changeNote = stepNote(points)
 
       const first = points.find((p) => p.market_usd !== null)?.market_usd ?? null
       const last = [...points].reverse().find((p) => p.market_usd !== null)?.market_usd ?? null
@@ -88,12 +111,13 @@ export const registerPriceHistory = (server: McpServer, ctx: ToolContext): void 
         first_usd: first,
         last_usd: last,
         change_pct: change,
+        change_note: changeNote,
         source,
         links: { card_page: ctx.links.card(card_id) }
       }
       const sample = points.length > 12 ? points.filter((_, i) => i % Math.ceil(points.length / 12) === 0 || i === points.length - 1) : points
       const text = points.length
-        ? [`${card.name} ${series} price${variant ? ` (${variant} printing)` : ''}, last ${days} days: ${money(first)} → ${money(last)} (${pct(change)}), ${points.length} data points.`, coverage.note, ...sample.map((p) => `- ${p.date}: ${money(p.market_usd)}`), `Chart: ${structured.links.card_page}`].join('\n')
+        ? [`${card.name} ${series} price${variant ? ` (${variant} printing)` : ''}, last ${days} days: ${money(first)} → ${money(last)} (${pct(change)}), ${points.length} data points.`, coverage.note, ...(changeNote ? [`Caution: ${changeNote}`] : []), ...sample.map((p) => `- ${p.date}: ${money(p.market_usd)}`), `Chart: ${structured.links.card_page}`].join('\n')
         : `No ${series} price points for ${card.name} in the last ${days} days. The card page may still show a longer history: ${structured.links.card_page}`
       return ok(structured, text)
     })

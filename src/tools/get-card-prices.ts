@@ -88,7 +88,15 @@ export const registerGetCardPrices = (server: McpServer, ctx: ToolContext): void
       }
 
       const head = `${card.name}${card.expansion_name ? ` — ${card.expansion_name}` : ''}${structured.card.number ? ` #${structured.card.number}` : ''} (${structured.card.game})`
-      const rawLines = ladder.raw.length ? ladder.raw.map((r) => `- ${r.condition}: ${money(r.market_usd)}`) : ['- no recent raw sales']
+      const order = ['NM', 'LP', 'MP', 'HP', 'DM']
+      const bestAbove = (i: number) => ladder.raw.slice(0, i).filter((x) => x.market_usd !== null && order.includes(x.condition)).pop()
+      const rawLines = ladder.raw.length
+        ? ladder.raw.map((r, i) => {
+            const better = order.includes(r.condition) ? bestAbove(i) : undefined
+            const inverted = better && r.market_usd !== null && better.market_usd !== null && r.market_usd > better.market_usd * 1.1
+            return `- ${r.condition}: ${money(r.market_usd)}${inverted ? ` (above ${better.condition} — low confidence, thin sales)` : ''}`
+          })
+        : ['- no recent raw sales']
       const gradedLines = ladder.graded.length ? ladder.graded.slice(0, 12).map((g) => `- ${g.company} ${g.grade}: ${money(g.market_usd)}`) : ['- no recent graded sales']
       const otherLines = ladder.other_variants.map((v) => `- ${v.variant}: ${[...v.raw.slice(0, 1).map((r) => `raw ${r.condition} ${money(r.market_usd)}`), ...v.graded.slice(0, 2).map((g) => `${g.company} ${g.grade} ${money(g.market_usd)}`)].join(', ') || 'no recent sales'}`)
       const text = [

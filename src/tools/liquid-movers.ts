@@ -30,6 +30,7 @@ const output = {
   as_of: z.string().describe('When this ranking was computed (ISO 8601)'),
   criteria: z.string(),
   count: z.number().int(),
+  volume_verified: z.boolean().describe('False when the list had to include cards whose yearly sales count is not tracked (Pokémon and other Scrydex-sourced games have no volume data).'),
   excluded_unstable: z.number().int().describe('Candidates dropped because their own 40-day raw series did not hold together.'),
   cards: z.array(cardSummarySchema.extend({ change_pct: z.number().nullable(), sales_per_year: z.number().int().nullable().describe('Recorded sales in the last year; null only when include_unknown_volume is on and the source does not track volume.') }))
 }
@@ -49,16 +50,18 @@ export const registerLiquidMovers = (server: McpServer, ctx: ToolContext): void 
       const { value, loadedAt } = await ctx.warm.liquidMovers.get()
       // The shared cache ranks by |change| and lets untracked volume through;
       // this tool promises RISING cards with REAL volume, so filter here.
-      const candidates = value
-        .filter((r) => !game || r.game === game)
-        .filter((r) => (r.pct ?? 0) > 0)
-        .filter((r) => include_unknown_volume || (r.sales_volume !== null && r.sales_volume !== undefined && r.sales_volume >= MIN_VOLUME))
-        .sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0))
+      const rising = value.filter((r) => !game || r.game === game).filter((r) => (r.pct ?? 0) > 0).sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0))
+      const hasVolume = (r: CatalogListRow) => r.sales_volume !== null && r.sales_volume !== undefined && r.sales_volume >= MIN_VOLUME
       const key = cacheKey('liquid_movers_verified', { game: game ?? '', include_unknown_volume, limit, at: loadedAt })
-      const { rows, dropped } = (await ctx.cache.getOrLoad(key, HOUR, async () => {
-        const v = await filterVerified(candidates, limit, async (r) => seriesLooksReal(await loadRecentSeries(ctx.db, r.id, 'raw')))
-        return { rows: v.kept, dropped: v.dropped }
-      })) as { rows: CatalogListRow[]; dropped: number }
+      const { rows, dropped, volumeVerified } = (await ctx.cache.getOrLoad(key, HOUR, async () => {
+        const check = async (r: CatalogListRow) => seriesLooksReal(await loadRecentSeries(ctx.db, r.id, 'raw'))
+        const strict = include_unknown_volume ? { kept: [] as CatalogListRow[], dropped: 0 } : await filterVerified(rising.filter(hasVolume), limit, check)
+        if (strict.kept.length > 0) return { rows: strict.kept, dropped: strict.dropped, volumeVerified: true }
+        // Nothing with tracked volume (Pokémon's source has none): fall back to
+        // untracked-volume cards rather than an empty answer, and say so.
+        const loose = await filterVerified(rising, limit, check)
+        return { rows: loose.kept, dropped: loose.dropped, volumeVerified: loose.kept.every(hasVolume) }
+      })) as { rows: CatalogListRow[]; dropped: number; volumeVerified: boolean }
       const cards = rows.map((r) => ({
         ...toSummary(r, ctx.links.card(r.id)),
         change_pct: cents(r.pct),
@@ -66,15 +69,16 @@ export const registerLiquidMovers = (server: McpServer, ctx: ToolContext): void 
       }))
       const structured = {
         as_of: new Date(loadedAt).toISOString(),
-        criteria: include_unknown_volume
-          ? `Raw price ≥ $${MIN_MARKET}, 30-day change > 0, ranked by change; cards without a tracked yearly sales count are included (sales_per_year null).`
-          : `Raw price ≥ $${MIN_MARKET}, ≥ ${MIN_VOLUME} recorded sales in the last year, 30-day change > 0, ranked by change.`,
+        criteria: volumeVerified
+          ? `Raw price ≥ $${MIN_MARKET}, ≥ ${MIN_VOLUME} recorded sales in the last year, 30-day change > 0, own 40-day series stable, ranked by change.`
+          : `Raw price ≥ $${MIN_MARKET}, 30-day change > 0, own 40-day series stable, ranked by change. Yearly sales counts are not tracked for ${game ? gameLabel(game) : 'some of these cards'}, so volume is unverified (sales_per_year null).`,
         count: cards.length,
+        volume_verified: volumeVerified,
         excluded_unstable: dropped,
         cards
       }
       const text = cards.length
-        ? [`Rising cards with real sales volume${game ? ` in ${gameLabel(game)}` : ''} (raw USD):`, ...cards.map((c, i) => `${i + 1}. ${c.name}${c.set ? ` (${c.set})` : ''}: ${money(c.raw_market_usd)} (${pct(c.change_pct)}${c.sales_per_year ? `, ~${c.sales_per_year} sales/yr` : ''}) · id ${c.id}`)].join('\n')
+        ? [`Rising cards${volumeVerified ? ' with real sales volume' : ' (sales volume not tracked for this source — price move and series stability only)'}${game ? ` in ${gameLabel(game)}` : ''} (raw USD):`, ...cards.map((c, i) => `${i + 1}. ${c.name}${c.set ? ` (${c.set})` : ''}: ${money(c.raw_market_usd)} (${pct(c.change_pct)}${c.sales_per_year ? `, ~${c.sales_per_year} sales/yr` : ''}) · id ${c.id}`)].join('\n')
         : `No liquid movers${game ? ` in ${gameLabel(game)}` : ''} right now (${structured.criteria}).`
       return ok(structured, text)
     })
