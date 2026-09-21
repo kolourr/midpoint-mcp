@@ -1,3 +1,4 @@
+import path from 'node:path'
 import express, { type Request, type Response, type NextFunction } from 'express'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import type { ToolContext } from './lib/context.js'
@@ -28,6 +29,15 @@ export const createApp = (ctx: ToolContext) => {
   app.get('/healthz', (_req, res) => {
     res.json({ ok: true, name: SERVER_NAME, version: SERVER_VERSION })
   })
+
+  // Connector directories (Claude, Muse) show the server host's favicon.
+  const iconPath = path.join(process.cwd(), 'assets', 'icon-512.png')
+  const sendIcon = (_req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'public, max-age=86400')
+    res.sendFile(iconPath, (err) => { if (err) res.status(404).end() })
+  }
+  app.get('/favicon.ico', sendIcon)
+  app.get('/icon-512.png', sendIcon)
 
   app.get('/.well-known/openai-apps-challenge', (_req, res) => {
     const token = ctx.config.OPENAI_APPS_CHALLENGE_TOKEN

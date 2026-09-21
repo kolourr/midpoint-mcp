@@ -20,6 +20,7 @@ ENV PORT=3000
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 mcp
 COPY --from=builder --chown=mcp:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=mcp:nodejs /app/dist ./dist
+COPY --chown=mcp:nodejs assets ./assets
 COPY --chown=mcp:nodejs package.json ./
 USER mcp
 EXPOSE 3000
