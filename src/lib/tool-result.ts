@@ -1,4 +1,5 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import { recordToolCall } from './usage.js'
 
 /**
  * Every tool returns structuredContent for the model plus a short text
@@ -27,13 +28,18 @@ export const describeError = (error: unknown): string => {
   return String(error)
 }
 
-/** Wrap a loader so infrastructure failures surface as readable tool errors. */
+/** Wrap a loader so infrastructure failures surface as readable tool errors.
+ *  Every call is counted per client (usage.ts); only thrown failures count
+ *  as errors — a "no match" `fail()` is a successful call. */
 export const guarded =
   <A>(label: string, run: (args: A) => Promise<CallToolResult>) =>
   async (args: A): Promise<CallToolResult> => {
     try {
-      return await run(args)
+      const result = await run(args)
+      recordToolCall(label, true)
+      return result
     } catch (error) {
+      recordToolCall(label, false)
       const detail = describeError(error)
       console.error(`[${label}] failed:`, detail)
       return fail(`${label} is temporarily unavailable (${detail.slice(0, 200)}). Retry in a moment.`)

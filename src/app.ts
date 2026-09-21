@@ -5,6 +5,7 @@ import type { ToolContext } from './lib/context.js'
 import { RateLimiter, clientIp } from './lib/rate-limit.js'
 import { buildLinks } from './lib/links.js'
 import { isSharedEgressHost, utmSourceFor } from './lib/client.js'
+import { withRequestClient } from './lib/usage.js'
 import { createMcpServer, SERVER_NAME, SERVER_VERSION } from './server.js'
 
 /**
@@ -82,15 +83,20 @@ export const createApp = (ctx: ToolContext) => {
       seenAgents.add(userAgent)
       console.log(`[mcp] client user-agent: ${userAgent} → utm_source=${utmSourceFor(userAgent)}`)
     }
-    const server = createMcpServer({ ...ctx, links: buildLinks(ctx.config.SITE_URL, utmSourceFor(userAgent, header(req.headers['x-midpoint-client']))) })
+    const client = utmSourceFor(userAgent, header(req.headers['x-midpoint-client']))
+    const server = createMcpServer({ ...ctx, links: buildLinks(ctx.config.SITE_URL, client) })
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
     res.on('close', () => {
       void transport.close()
       void server.close()
     })
     try {
-      await server.connect(transport)
-      await transport.handleRequest(req, res, req.body)
+      // The client label travels with the request's async context so the
+      // tool handlers can count the call per client (usage.ts).
+      await withRequestClient(client, async () => {
+        await server.connect(transport)
+        await transport.handleRequest(req, res, req.body)
+      })
     } catch (error) {
       console.error('[mcp] request failed:', error instanceof Error ? error.message : error)
       if (!res.headersSent) {
