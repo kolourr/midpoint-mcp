@@ -47,7 +47,7 @@ export const registerGetCardPrices = (server: McpServer, ctx: ToolContext): void
         'Use this when the user wants the full current value of a specific card: ungraded prices by condition (NM/LP/MP/HP) and graded prices for every company and grade on record (PSA, CGC, BGS, SGC, TAG). Requires a card id from search_cards. Prices are USD market values from real sold listings, refreshed daily. Do not use to search by name.',
       inputSchema: input,
       outputSchema: output,
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+      annotations: { title: 'Get card price ladder', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     },
     guarded('get_card_prices', async ({ card_id }) => {
       const card = await getCatalogCard(ctx.db, card_id)

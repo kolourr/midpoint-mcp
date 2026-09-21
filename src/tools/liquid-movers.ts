@@ -44,7 +44,7 @@ export const registerLiquidMovers = (server: McpServer, ctx: ToolContext): void 
         'Use this when the user wants cards that are both rising in price and easy to sell: recent gainers filtered to cards with at least 25 recorded sales a year and a raw price of at least $5, across all games and sports. Better than trending_cards for flipping or selling decisions. Do not use for a single named card.',
       inputSchema: input,
       outputSchema: output,
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+      annotations: { title: 'Liquid movers (rising cards that actually sell)', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     },
     guarded('liquid_movers', async ({ game, include_unknown_volume, limit }) => {
       const { value, loadedAt } = await ctx.warm.liquidMovers.get()

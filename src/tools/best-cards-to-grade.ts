@@ -86,7 +86,7 @@ export const registerBestCardsToGrade = (server: McpServer, ctx: ToolContext): v
         'Use this when the user asks which cards in a game, sport or set have the biggest payoff from grading. Ranks priced cards by expected net profit at a 50% gem rate (half PSA 10, half PSA 9, minus raw and the fee), requiring both PSA 9 and PSA 10 prices so thin-market outliers are excluded. Returns card ids for grading_roi. Do not use for a single named card.',
       inputSchema: input,
       outputSchema: output,
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+      annotations: { title: 'Best cards to grade', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     },
     guarded('best_cards_to_grade', async ({ game, set_slug, grading_fee_usd, limit }) => {
       const fee = grading_fee_usd ?? ECONOMY_FEE

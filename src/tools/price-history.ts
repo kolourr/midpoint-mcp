@@ -79,7 +79,7 @@ export const registerPriceHistory = (server: McpServer, ctx: ToolContext): void 
         'Use this when the user asks how a card\'s price has changed over weeks or months, or wants a trend for the raw or a PSA-graded series. Returns dated USD market values for the last 7 to 180 days. Requires a card id from search_cards. Do not use for forecasts.',
       inputSchema: input,
       outputSchema: output,
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+      annotations: { title: 'Get price history', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     },
     guarded('get_price_history', async ({ card_id, days, grade }) => {
       const card = await getCatalogCard(ctx.db, card_id)

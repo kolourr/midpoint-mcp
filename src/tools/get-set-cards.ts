@@ -32,7 +32,7 @@ export const registerGetSetCards = (server: McpServer, ctx: ToolContext): void =
         'Use this when the user wants the most valuable cards in a specific set or a priced checklist of a set. Requires a set id from list_sets. Returns raw and PSA 10 USD prices per card. Do not use for a single named card; use search_cards instead.',
       inputSchema: input,
       outputSchema: output,
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+      annotations: { title: 'Cards in a set with prices', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     },
     guarded('get_set_cards', async ({ game, set_id, sort, limit }) => {
       const key = cacheKey('get_set_cards', { game, set_id })

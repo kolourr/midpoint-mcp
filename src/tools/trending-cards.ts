@@ -106,7 +106,7 @@ export const registerTrendingCards = (server: McpServer, ctx: ToolContext): void
         'Use this when the user asks which cards are rising, hot, spiking, crashing or trending, in one game or across all games. Returns the biggest 30-day gainers (or drops) with the percentage change, measured on the PSA 10 price where the card has one and on the raw price otherwise; moves over 300% are excluded as bad data. Do not use for a single named card or for long-term history.',
       inputSchema: input,
       outputSchema: output,
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+      annotations: { title: 'Trending cards (30-day price movers)', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     },
     guarded('trending_cards', async ({ game, direction, min_market_usd, limit }) => {
       const key = cacheKey('trending_cards', { game: game ?? '', direction, min_market_usd, limit })

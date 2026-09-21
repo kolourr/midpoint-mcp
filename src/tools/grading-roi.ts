@@ -40,7 +40,7 @@ export const registerGradingRoi = (server: McpServer, ctx: ToolContext): void =>
         'Use this when the user asks whether a card is worth grading, submitting to PSA/CGC/BGS/SGC/TAG, or what a PSA 10 adds. Returns raw vs PSA 9 vs PSA 10 market prices, the gem premium, net profit after grading fees per outcome, expected value by gem probability, the break-even gem rate, which company pays most, and a plain-language verdict. Requires a card id from search_cards. It does not assess the condition of the user\'s copy.',
       inputSchema: input,
       outputSchema: output,
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+      annotations: { title: 'Is this card worth grading?', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     },
     guarded('grading_roi', async ({ card_id, grading_fee_usd }) => {
       const key = cacheKey('grading_roi_card', { card_id })

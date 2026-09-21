@@ -71,7 +71,7 @@ export const registerSearchCards = (server: McpServer, ctx: ToolContext): void =
         'Use this first when the user names a trading card and wants its value, price, or whether to grade it. Searches 1.5M+ Pokémon, Magic, Yu-Gi-Oh!, One Piece, Lorcana, sports (baseball, basketball, football, hockey, soccer, wrestling, UFC and more) and entertainment cards by name, set, number and year, returning ungraded and PSA 10 market prices in USD from real sold listings. Returns card ids for get_card_prices, grading_roi and get_price_history. Do not use for sealed product, for cards you already have an id for, or for price prediction.',
       inputSchema: input,
       outputSchema: output,
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+      annotations: { title: 'Search card prices', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     },
     guarded('search_cards', async (args) => {
       const key = cacheKey('search_cards', { q: args.query.toLowerCase(), game: args.game ?? '', set: args.set_id ?? '' })

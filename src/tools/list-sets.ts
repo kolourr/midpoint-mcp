@@ -34,7 +34,7 @@ export const registerListSets = (server: McpServer, ctx: ToolContext): void => {
         'Use this to find the set id for a game or sport (e.g. "Evolving Skies", "2019 Panini Prizm") before calling get_set_cards, or when the user asks which sets exist. Newest first. Do not use to price a single card.',
       inputSchema: input,
       outputSchema: output,
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+      annotations: { title: 'List sets / expansions', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     },
     guarded('list_sets', async ({ game, query, limit }) => {
       const key = cacheKey('list_sets', { game })
