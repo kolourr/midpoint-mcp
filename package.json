@@ -15,11 +15,14 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:live": "MCP_LIVE_TESTS=1 vitest run",
-    "inspect": "npx @modelcontextprotocol/inspector"
+    "inspect": "npx @modelcontextprotocol/inspector",
+    "start:discord": "node dist/discord/index.js",
+    "dev:discord": "tsx watch src/discord/index.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
     "@supabase/supabase-js": "^2.105.4",
+    "discord.js": "^14.27.0",
     "express": "^5.2.1",
     "ws": "^8.21.3",
     "zod": "^3.23.8"

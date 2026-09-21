@@ -139,6 +139,21 @@ Game keys: `pokemon magicthegathering yugioh onepiece lorcana riftbound gundam d
 basketball football hockey soccer wrestling ufc racing tennis golf boxing marvel starwars gpk entertainment
 othertcg`.
 
+## Discord bot
+
+The same nine tools as slash commands (`/price`, `/grade`, `/history`, `/trending`, `/movers`,
+`/set`), answered as embeds. Source in `src/discord/`, built by the same `npm run build`, run
+with `npm run start:discord` (or `Dockerfile.discord` as a second Coolify app). It is a plain
+HTTP client of the public server: no database, no secrets beyond the bot token. The server
+labels its calls and links as client `discord`.
+
+Environment: `DISCORD_BOT_TOKEN`, `DISCORD_CLIENT_ID` (both from the Discord Developer Portal →
+your application → Bot / General Information), optional `MCP_URL` (defaults to production) and
+`APP_LINK` (defaults to `https://www.cardcenteringtool.com/go/discord`). Invite URL:
+`https://discord.com/oauth2/authorize?client_id=<CLIENT_ID>&scope=bot%20applications.commands&permissions=2048`
+(Send Messages). Commands are registered globally on boot; Discord can take up to an hour to
+show them in every server after the first registration.
+
 ## Data handling
 
 Requests carry only the tool arguments (card names, ids, filters) and the caller's IP for rate limiting.
