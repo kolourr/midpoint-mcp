@@ -1,5 +1,7 @@
 # Midpoint MCP server
 
+[![Midpoint MCP server on AI Agents Listing](https://aiagentslisting.com/midpoint-mcp-server/badge.svg?claim=4238f835540cb8bb13e1af890be981a1)](https://aiagentslisting.com/mcp/midpoint-mcp-server)
+
 Trading-card market prices and grading ROI as [Model Context Protocol](https://modelcontextprotocol.io)
 tools. Read-only, no account, no API key. Powers the **Midpoint Card Prices** plugin in ChatGPT and works
 with Claude, Claude Code, Cursor and any MCP client.
