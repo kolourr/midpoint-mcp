@@ -6,6 +6,7 @@ import { toSummary, cardSummarySchema, type CatalogListRow } from '../lib/prices
 import { GAME_KEYS, gameLabel } from '../lib/games.js'
 import { money } from '../lib/format.js'
 import { fail, ok, guarded } from '../lib/tool-result.js'
+import { loadSeoSetCards, sortSetRows } from '../lib/sets.js'
 
 const input = {
   game: z.enum(GAME_KEYS),
@@ -39,11 +40,15 @@ export const registerGetSetCards = (server: McpServer, ctx: ToolContext): void =
       const rows = (await ctx.cache.getOrLoad(key, HOUR, async () => {
         const { data, error } = await ctx.db.rpc('set_cards', { gf: game, expansion_filter: set_id })
         if (error) throw error
-        return (data ?? []) as CatalogListRow[]
+        const byExpansion = (data ?? []) as CatalogListRow[]
+        if (byExpansion.length > 0) return byExpansion
+        // Not an expansion id: a set slug from list_sets (every sport, and
+        // the TCGs outside the expansions cache).
+        return loadSeoSetCards(ctx.db, game, set_id)
       })) as CatalogListRow[]
       if (rows.length === 0) return fail(`No cards for set "${set_id}" in ${gameLabel(game)}. Call list_sets to find the right set id.`)
 
-      const sorted = sort === 'value' ? [...rows].sort((a, b) => (b.raw_market ?? -1) - (a.raw_market ?? -1)) : rows
+      const sorted = sortSetRows(rows, sort)
       const cards = sorted.slice(0, limit).map((r) => toSummary(r, ctx.links.card(r.id)))
       const structured = { game: gameLabel(game), set_id, set_name: rows[0]?.expansion_name ?? null, total_cards: rows.length, count: cards.length, cards }
       const text = [
