@@ -4,6 +4,7 @@ import type { ToolContext } from '../lib/context.js'
 import { cacheKey, HOUR } from '../lib/cache.js'
 import { GAME_KEYS, gameLabel } from '../lib/games.js'
 import { ok, guarded } from '../lib/tool-result.js'
+import { listSeoSets, type SetItem } from '../lib/sets.js'
 
 const input = {
   game: z.enum(GAME_KEYS),
@@ -44,10 +45,15 @@ export const registerListSets = (server: McpServer, ctx: ToolContext): void => {
         return (data ?? []) as ExpansionRow[]
       })) as ExpansionRow[]
       const needle = query?.toLowerCase()
-      const sets = all
-        .filter((s) => !needle || (s.expansion_name ?? '').toLowerCase().includes(needle) || s.expansion_id.toLowerCase().includes(needle))
-        .slice(0, limit)
-        .map((s) => ({ set_id: s.expansion_id, name: s.expansion_name, release_date: s.release_date, card_count: Number(s.card_count) }))
+      // The expansions cache only covers the Home-feed games. Every sport
+      // (and several TCGs) has no rows there: read seo_sets for those.
+      const sets: SetItem[] =
+        all.length > 0
+          ? all
+              .filter((s) => !needle || (s.expansion_name ?? '').toLowerCase().includes(needle) || s.expansion_id.toLowerCase().includes(needle))
+              .slice(0, limit)
+              .map((s) => ({ set_id: s.expansion_id, name: s.expansion_name, release_date: s.release_date, card_count: Number(s.card_count) }))
+          : ((await ctx.cache.getOrLoad(cacheKey('list_sets_seo', { game, q: needle ?? '', limit }), 6 * HOUR, () => listSeoSets(ctx.db, game, query, limit))) as SetItem[])
       const structured = { game: gameLabel(game), count: sets.length, sets, links: { sets_index: ctx.links.setsIndex(game) } }
       const text = sets.length
         ? [`${gameLabel(game)} sets${needle ? ` matching "${query}"` : ''} (newest first):`, ...sets.map((s) => `- ${s.name ?? s.set_id} (${s.release_date ?? 'n/a'}, ${s.card_count} cards) · set_id ${s.set_id}`)].join('\n')
