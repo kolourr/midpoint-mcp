@@ -23,7 +23,7 @@ export const loadLiquidMovers = async (db: ServiceClient): Promise<CatalogListRo
 const input = {
   game: z.enum(GAME_KEYS).optional().describe('Restrict to one game or sport; omit for all.'),
   include_unknown_volume: z.boolean().default(false).describe('Also include cards whose yearly sales count is not tracked (mostly Pokémon from the Scrydex source). Off by default so every result has a verifiable sales figure.'),
-  limit: z.number().int().min(1).max(50).default(15)
+  limit: z.number().int().min(1).max(50).default(15).describe('How many cards to return, biggest 30-day gain first (1 to 50, default 15).')
 }
 
 const output = {

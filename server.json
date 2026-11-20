@@ -3,8 +3,15 @@
   "name": "com.cardcenteringtool/card-prices",
   "title": "Midpoint Card Prices",
   "description": "Trading card prices and grading ROI for 1.5M+ Pokémon, Magic, Yu-Gi-Oh! and sports cards. Read-only.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "websiteUrl": "https://www.cardcenteringtool.com/mcp",
+  "icons": [
+    {
+      "src": "https://mcp.cardcenteringtool.com/icon-512.png",
+      "mimeType": "image/png",
+      "sizes": ["512x512"]
+    }
+  ],
   "repository": {
     "url": "https://github.com/kolourr/midpoint-mcp",
     "source": "github"

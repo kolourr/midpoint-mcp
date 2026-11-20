@@ -54,7 +54,7 @@ const input = {
   game: z.enum(GAME_KEYS).describe('Game or sport to rank.'),
   set_slug: z.string().trim().max(80).regex(/^[a-z0-9-]*$/).optional().describe('Optional set slug (as used on /sets/<game>/<slug>) to rank inside one set.'),
   grading_fee_usd: z.number().min(0).max(5000).optional().describe('Grading fee to assume. Defaults to $25.'),
-  limit: z.number().int().min(1).max(50).default(12)
+  limit: z.number().int().min(1).max(50).default(12).describe('How many cards to return, best expected profit first (1 to 50, default 12).')
 }
 
 const output = {

@@ -10,7 +10,7 @@ import { fail, ok, guarded } from '../lib/tool-result.js'
 
 const input = {
   card_id: z.string().trim().min(1).max(80).describe('Catalog card id from search_cards.'),
-  days: z.number().int().min(7).max(180).default(90),
+  days: z.number().int().min(7).max(180).default(90).describe('How many days back the series should go (7 to 180, default 90).'),
   grade: z.string().trim().max(10).optional().describe('PSA grade for a graded series, e.g. "10" or "9". Omit for the raw (ungraded) series.')
 }
 
