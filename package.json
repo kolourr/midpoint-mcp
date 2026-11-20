@@ -1,6 +1,6 @@
 {
   "name": "midpoint-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Midpoint card prices and grading ROI as an MCP server (Streamable HTTP, read-only, no auth).",
   "type": "module",

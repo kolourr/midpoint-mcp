@@ -7,9 +7,9 @@ import { ok, guarded } from '../lib/tool-result.js'
 import { listSeoSets, type SetItem } from '../lib/sets.js'
 
 const input = {
-  game: z.enum(GAME_KEYS),
+  game: z.enum(GAME_KEYS).describe('Game or sport whose sets to list, e.g. "pokemon", "magicthegathering" or "baseball".'),
   query: z.string().trim().max(60).optional().describe('Optional substring to filter set names, e.g. "evolving" or "2019 prizm".'),
-  limit: z.number().int().min(1).max(100).default(30)
+  limit: z.number().int().min(1).max(100).default(30).describe('How many sets to return, newest first (1 to 100, default 30). Narrow with query when the set you want is older.')
 }
 
 const output = {

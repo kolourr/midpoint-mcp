@@ -3,7 +3,18 @@ import type { ToolContext } from './lib/context.js'
 import { registerAllTools } from './tools/index.js'
 
 export const SERVER_NAME = 'midpoint-card-prices'
-export const SERVER_VERSION = '1.0.0'
+export const SERVER_VERSION = '1.0.1'
+export const SERVER_TITLE = 'Midpoint Card Prices'
+export const SERVER_WEBSITE = 'https://www.cardcenteringtool.com/mcp'
+
+/**
+ * The app icon, served by this server at /icon-512.png (src/app.ts).
+ * server.json carries the same list for the MCP Registry; a test keeps the
+ * two and the file's real size in step.
+ */
+export const SERVER_ICONS = [
+  { src: 'https://mcp.cardcenteringtool.com/icon-512.png', mimeType: 'image/png', sizes: ['512x512'] }
+]
 
 /**
  * Kept under 512 characters per OpenAI's guidance. Describes coverage only;
@@ -17,7 +28,10 @@ export const INSTRUCTIONS =
 
 /** A fresh server per request: the transport is stateless. */
 export const createMcpServer = (ctx: ToolContext): McpServer => {
-  const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION }, { instructions: INSTRUCTIONS })
+  const server = new McpServer(
+    { name: SERVER_NAME, title: SERVER_TITLE, version: SERVER_VERSION, websiteUrl: SERVER_WEBSITE, icons: SERVER_ICONS },
+    { instructions: INSTRUCTIONS }
+  )
   registerAllTools(server, ctx)
   return server
 }

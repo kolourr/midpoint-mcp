@@ -48,7 +48,7 @@ const input = {
   game: z.enum(GAME_KEYS).optional().describe('Restrict to one game or sport; omit for all.'),
   direction: z.enum(['up', 'down']).default('up').describe('"up" = biggest gainers, "down" = biggest drops.'),
   min_market_usd: z.number().min(0.5).max(1000).default(5).describe('Ignore cards whose raw price is below this.'),
-  limit: z.number().int().min(1).max(50).default(15)
+  limit: z.number().int().min(1).max(50).default(15).describe('How many cards to return, biggest move first (1 to 50, default 15).')
 }
 
 const card = z.object({

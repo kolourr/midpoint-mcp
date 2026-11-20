@@ -19,7 +19,7 @@ const input = {
     .describe('Card name, optionally with set, number or year. Examples: "Umbreon VMAX Evolving Skies", "1986 Fleer Jordan", "Charizard base set 4/102".'),
   game: z.enum(GAME_KEYS).optional().describe('Restrict to one game or sport. Omit when unsure.'),
   set_id: z.string().trim().max(60).regex(/^[a-zA-Z0-9_.-]*$/).optional().describe('Expansion id from list_sets, to search inside one set.'),
-  limit: z.number().int().min(1).max(50).default(10)
+  limit: z.number().int().min(1).max(50).default(10).describe('How many matches to return, best match first (1 to 50, default 10).')
 }
 
 const output = {

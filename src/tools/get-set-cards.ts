@@ -9,10 +9,10 @@ import { fail, ok, guarded } from '../lib/tool-result.js'
 import { loadSeoSetCards, sortSetRows } from '../lib/sets.js'
 
 const input = {
-  game: z.enum(GAME_KEYS),
+  game: z.enum(GAME_KEYS).describe('Game or sport the set belongs to, e.g. "pokemon" or "basketball". Use the same value you passed to list_sets.'),
   set_id: z.string().trim().min(1).max(60).regex(/^[a-zA-Z0-9_.-]+$/).describe('Expansion id from list_sets.'),
   sort: z.enum(['value', 'number']).default('value').describe('"value" = most valuable first; "number" = checklist order.'),
-  limit: z.number().int().min(1).max(100).default(25)
+  limit: z.number().int().min(1).max(100).default(25).describe('How many cards to return in the chosen order (1 to 100, default 25). total_cards in the result gives the full set size.')
 }
 
 const output = {
